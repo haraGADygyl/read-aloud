@@ -94,6 +94,12 @@ It re-reads the last reply from this project, exactly as it was spoken —
 already stripped of markdown, already cut to `maxChars`. It works whether the
 reply was spoken or held, and asking twice restarts it rather than queueing.
 
+Several terminals open in one project share that copy, so from a shell you get
+whichever finished last. `/claude-speak:speak again` knows which session it was
+typed in and reads that session's own last reply. Claude's one-line answer to
+the slash command — *"Stopped speaking."* — is neither spoken nor remembered,
+so it never becomes the reply `again` repeats.
+
 **It reads more than replies.** Point it at a file and it reads that instead —
 same voice, same markdown stripping:
 
@@ -246,7 +252,7 @@ update never re-downloads 338 MB:
 | `~/.local/share/claude-speak/models/` | Kokoro model + voices |
 | `~/.local/share/claude-speak/venv/` | Python environment |
 | `~/.local/share/claude-speak/held.jsonl` | Replies waiting in hold mode |
-| `~/.local/share/claude-speak/last/` | The most recent reply per project, for `again` |
+| `~/.local/share/claude-speak/last/` | The most recent reply per project, and per session under `sessions/` (kept 30 days), for `again` |
 | `~/.local/share/claude-speak/plugin-root` | Which plugin directory is installed, so the PATH link and the daemon survive an update |
 | `$XDG_RUNTIME_DIR/claude-speak.sock` | Daemon socket |
 

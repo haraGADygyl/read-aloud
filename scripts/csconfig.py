@@ -19,6 +19,8 @@ defaults are written down.
 
     csconfig.py last get <label>       the last reply spoken there, for `again`
     csconfig.py last drop <label>      forget it
+    csconfig.py last session <id>      the last reply from one Claude session
+    csconfig.py last mute <id>         its next reply answers a command: skip it
 
     csconfig.py suggest <typo> <cmd>…  the closest command name, or nothing
 """
@@ -189,6 +191,18 @@ def cmd_last(argv):
     label = argv[1] if len(argv) > 1 else ""
     path = cspaths.last_file(label)
 
+    if action == "session":
+        path = cspaths.session_file(label)
+        action = "get"
+    if action == "mute":
+        path = cspaths.mute_file(label)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w"):
+                pass                     # the mtime is the whole message
+        except OSError:
+            return 1
+        return 0
     if action == "get":
         try:
             with open(path) as fh:

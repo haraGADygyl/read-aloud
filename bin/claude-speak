@@ -185,8 +185,21 @@ unknown() {
   exit 2
 }
 
+# /claude-speak:speak passes the Claude Code session it was typed in. Several
+# sessions often share one directory, so `again` needs the session to find its
+# own reply, and the hook needs telling that the session's next reply is only
+# Claude reporting this command. Never set from a plain shell.
+SESSION=""
+if [[ "${1:-}" == --session ]]; then
+  SESSION="${2:-}"
+  shift
+  [[ $# -gt 0 ]] && shift
+fi
+
 ensure_cfg
 heal
+
+[[ -n "$SESSION" ]] && "${CS[@]}" last mute "$SESSION"
 
 case "${1:-status}" in
   install) exec bash "$SCRIPTS/install.sh" "${@:2}" ;;
@@ -386,13 +399,21 @@ print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" 2>
     ;;
 
   again)
-    # The reply as it was spoken — the hook keeps a copy per project, so this
-    # needs no transcript and no guesswork about which session you are in.
+    # The reply as it was spoken — the hook keeps a copy per session and per
+    # project, so this needs no transcript. From the slash command it is this
+    # session's own; the project copy is whichever session there finished
+    # last, so it is only the answer from a plain shell or with a name given.
     # A fixed session id means a second "again" replaces the first rather than
     # queueing behind it, and piping sidesteps the argv limit on a long reply.
-    want="${2:-$(basename "$PWD")}"
-    text=$("${CS[@]}" last get "$want") \
-      || { echo "nothing spoken here yet — ${want} has no last reply"; exit 0; }
+    if [[ -n "$SESSION" && -z "${2:-}" ]]; then
+      want="this session"
+      text=$("${CS[@]}" last session "$SESSION") \
+        || { echo "nothing spoken in this session yet"; exit 0; }
+    else
+      want="${2:-$(basename "$PWD")}"
+      text=$("${CS[@]}" last get "$want") \
+        || { echo "nothing spoken here yet — ${want} has no last reply"; exit 0; }
+    fi
     [[ -n "${text//[[:space:]]/}" ]] || { echo "nothing to repeat"; exit 0; }
     printf '%s' "$text" | "${SAY[@]}" --session again --label "" \
       --voice "$(get voice)" --speed "$(get speed)"

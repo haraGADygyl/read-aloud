@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,9 +46,11 @@ class Base(unittest.TestCase):
         with open(self.cfg, "w") as fh:
             json.dump(base, fh)
 
-    def reply(self, text, cwd="/tmp/some-project"):
-        payload = json.dumps({"session_id": "s", "cwd": cwd,
-                              "last_assistant_message": text})
+    def reply(self, text, cwd="/tmp/some-project", session="s"):
+        payload = {"cwd": cwd, "last_assistant_message": text}
+        if session:
+            payload["session_id"] = session
+        payload = json.dumps(payload)
         return subprocess.run([sys.executable, HOOK], input=payload,
                               capture_output=True, text=True, env=self.env)
 
@@ -126,6 +129,130 @@ class Asking(Base):
                              capture_output=True, text=True, env=self.env)
         self.assertEqual(out.returncode, 2)
         self.assertIn("unknown last action", out.stderr)
+
+
+class PerSession(Base):
+    """Several sessions open in one directory share the project copy, so the
+    project copy is whichever finished last — /claude-speak:speak again once
+    read a neighbouring terminal's reply instead of its own."""
+
+    def session(self, sid):
+        return subprocess.run([sys.executable, CLI, "last", "session", sid],
+                              capture_output=True, text=True, env=self.env)
+
+    def test_sessions_in_one_directory_keep_their_own(self):
+        self.reply("review summary", session="341")
+        self.reply("share-link draft", session="other")
+        self.assertEqual(self.session("341").stdout, "review summary")
+        self.assertEqual(self.session("other").stdout, "share-link draft")
+
+    def test_the_project_copy_is_still_the_newest(self):
+        """A plain shell has no session and gets this one."""
+        self.reply("review summary", session="341")
+        self.reply("share-link draft", session="other")
+        self.assertEqual(self.last("some-project").stdout, "share-link draft")
+
+    def test_a_session_never_heard_from_fails_quietly(self):
+        self.assertEqual(self.session("never").returncode, 1)
+
+    def test_no_session_id_writes_no_session_file(self):
+        self.reply("anonymous", session="")
+        self.assertEqual(self.last("some-project").stdout, "anonymous")
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "last", "sessions")))
+
+    def test_month_old_sessions_are_forgotten(self):
+        self.reply("old", session="ancient")
+        path = os.path.join(self.dir, "last", "sessions", "ancient.txt")
+        month = time.time() - 31 * 86400
+        os.utime(path, (month, month))
+        self.reply("new", session="current")
+        self.assertFalse(os.path.exists(path))
+        self.assertEqual(self.session("current").stdout, "new")
+
+
+class CommandReplies(Base):
+    """Claude's one-line report of a /claude-speak:speak run — "Stopped
+    speaking." — is not a reply worth hearing, and must not become the one
+    `again` repeats."""
+
+    def mute(self, sid="s"):
+        subprocess.run([sys.executable, CLI, "last", "mute", sid],
+                       capture_output=True, env=self.env)
+
+    def test_the_report_is_not_kept(self):
+        self.reply("review summary")
+        self.mute()
+        self.reply("Stopped speaking.")
+        self.assertEqual(self.last("some-project").stdout, "review summary")
+
+    def test_the_report_is_not_held_either(self):
+        self.write_cfg({"holdReplies": True})
+        self.mute()
+        self.reply("Repeating the last reply.")
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "held.jsonl")))
+
+    def test_only_the_next_reply_is_skipped(self):
+        self.mute()
+        self.reply("Stopped speaking.")
+        self.reply("real work")
+        self.assertEqual(self.last("some-project").stdout, "real work")
+
+    def test_the_marker_belongs_to_one_session(self):
+        self.mute("341")
+        self.reply("from next door", session="other")
+        self.assertEqual(self.last("some-project").stdout, "from next door")
+
+    def test_a_stale_marker_swallows_nothing(self):
+        """A command whose report never came — Esc, so no Stop — must not eat
+        a real reply minutes later."""
+        self.mute()
+        path = os.path.join(self.dir, "last", "sessions", "s.mute")
+        old = time.time() - 600
+        os.utime(path, (old, old))
+        self.reply("real work")
+        self.assertEqual(self.last("some-project").stdout, "real work")
+        self.assertFalse(os.path.exists(path))
+
+    def test_turning_it_off_still_uses_up_the_marker(self):
+        self.mute()
+        self.write_cfg({"enabled": False})
+        self.reply("Voice off.")
+        self.write_cfg({})
+        self.reply("real work")
+        self.assertEqual(self.last("some-project").stdout, "real work")
+
+
+class FromTheSlashCommand(Base):
+    """bin/claude-speak --session, as /claude-speak:speak runs it. Only the
+    paths that play nothing are driven here."""
+
+    BIN = os.path.join(ROOT, "bin", "claude-speak")
+
+    def cli(self, *args):
+        env = dict(self.env, HOME=self.dir, XDG_RUNTIME_DIR=self.dir)
+        return subprocess.run([self.BIN] + list(args), capture_output=True,
+                              text=True, env=env, cwd=self.dir)
+
+    def test_again_asks_for_this_session_not_the_project(self):
+        self.reply("someone else's", cwd=self.dir, session="other")
+        out = self.cli("--session", "341", "again")
+        self.assertEqual(out.stdout.strip(), "nothing spoken in this session yet")
+
+    def test_the_command_marks_its_report(self):
+        self.cli("--session", "341", "pending")
+        self.assertTrue(os.path.exists(
+            os.path.join(self.dir, "last", "sessions", "341.mute")))
+
+    def test_a_plain_shell_marks_nothing(self):
+        self.cli("pending")
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "last", "sessions")))
+
+    def test_an_empty_session_is_a_plain_shell(self):
+        """An older Claude Code leaves ${CLAUDE_SESSION_ID} unexpanded and
+        the shell turns it into an empty argument."""
+        out = self.cli("--session", "", "pending")
+        self.assertNotIn("no such command", out.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "last", "sessions")))
 
 
 class LabelsAreFilenames(unittest.TestCase):

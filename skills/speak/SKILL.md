@@ -12,7 +12,7 @@ Claude Code's built-in `/voice` is the *input* side (dictation).
 
 The user ran `/claude-speak:speak $ARGUMENTS`. The command has already executed:
 
-!`"${CLAUDE_PLUGIN_ROOT}/bin/claude-speak" $ARGUMENTS`
+!`"${CLAUDE_PLUGIN_ROOT}/bin/claude-speak" --session "${CLAUDE_SESSION_ID}" $ARGUMENTS`
 
 ## What to do
 
@@ -30,8 +30,8 @@ Rules:
 
 - No preamble, no explanation, no code blocks, no bullet lists, no follow-up offers.
 - If the output above is empty, an error, or still contains a literal `$ARGUMENTS`,
-  run `"${CLAUDE_PLUGIN_ROOT}/bin/claude-speak" $ARGUMENTS` yourself with Bash and
-  report that result instead.
+  run `"${CLAUDE_PLUGIN_ROOT}/bin/claude-speak" --session "${CLAUDE_SESSION_ID}" $ARGUMENTS`
+  yourself with Bash and report that result instead.
 - If the output says to run `claude-speak install`, say so in one line — the neural
   voice model has not been downloaded yet.
 - If the argument was not recognised the output already says so, names the

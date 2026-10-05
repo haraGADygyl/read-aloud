@@ -22,6 +22,7 @@ MODEL = os.path.join(DATA, "models", "kokoro-v1.0.onnx")
 VOICES = os.path.join(DATA, "models", "voices-v1.0.bin")
 HELD = os.path.join(DATA, "held.jsonl")
 LAST = os.path.join(DATA, "last")           # one file per project, see last_file
+SESSIONS = os.path.join(LAST, "sessions")   # and per session, see session_file
 LOG = os.path.join(DATA, "daemon.log")
 
 # Where the plugin is installed right now, recorded by the Stop hook because it
@@ -73,8 +74,27 @@ def last_file(label):
     file, which is a fair price for not letting a directory called ".." write
     wherever it likes.
     """
-    safe = re.sub(r"[^A-Za-z0-9._-]", "_", label or "").strip(".") or "claude"
-    return os.path.join(LAST, safe + ".txt")
+    return os.path.join(LAST, _safe(label) + ".txt")
+
+
+def session_file(session):
+    """The most recent reply from one Claude Code session, for `again`.
+
+    The project copy above is shared by every session open in that directory,
+    so with two terminals in one repo it holds whichever finished last.
+    /claude-speak:speak knows its own session id and asks for this instead.
+    """
+    return os.path.join(SESSIONS, _safe(session) + ".txt")
+
+
+def mute_file(session):
+    """Marks the next reply from a session as the answer to a claude-speak
+    command — "Stopped speaking." — which is neither spoken nor kept."""
+    return os.path.join(SESSIONS, _safe(session) + ".mute")
+
+
+def _safe(name):
+    return re.sub(r"[^A-Za-z0-9._-]", "_", name or "").strip(".") or "claude"
 
 
 def kokoro_ready():

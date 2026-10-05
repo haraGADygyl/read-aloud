@@ -192,23 +192,76 @@ def hold(text, cfg, quiet=False):
         ding(cfg)
 
 
-def remember(text, cfg):
+def remember(text, cfg, session):
     """Keep this reply so `claude-speak again` can read it back.
 
     Stored after cleaning and after the maxChars cut, so a repeat is the same
     words in the same order rather than nearly so. One file per project, keyed
     the way play and clear are keyed, written atomically because two sessions
     in the same directory can finish at the same moment.
+
+    And one per session, because the project file belongs to whichever session
+    in that directory finished last — /claude-speak:speak again once read a
+    neighbouring terminal's reply instead of its own.
     """
+    paths = [cspaths.last_file(cfg["_label"])]
+    if session:
+        paths.append(cspaths.session_file(session))
+    for path in paths:
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp = path + ".tmp"
+            with open(tmp, "w") as fh:
+                fh.write(text)
+            os.replace(tmp, path)
+        except OSError:
+            pass
+    if session:
+        forget_old_sessions()
+
+
+SESSION_KEEP_DAYS = 30
+
+
+def forget_old_sessions():
+    """A file per session would otherwise pile up forever."""
+    cutoff = time.time() - SESSION_KEEP_DAYS * 86400
     try:
-        path = cspaths.last_file(cfg["_label"])
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w") as fh:
-            fh.write(text)
-        os.replace(tmp, path)
+        names = os.listdir(cspaths.SESSIONS)
     except OSError:
-        pass
+        return
+    for name in names:
+        path = os.path.join(cspaths.SESSIONS, name)
+        try:
+            if os.path.getmtime(path) < cutoff:
+                os.unlink(path)
+        except OSError:
+            pass
+
+
+# Long enough for Claude to report a command in one line, even when it has to
+# re-run the binary itself; short enough that a command whose reply never came
+# — interrupted with Esc, so no Stop — cannot swallow a real reply much later.
+MUTE_SECONDS = 120
+
+
+def answers_a_command(session):
+    """True for the reply that reports a /claude-speak:speak run.
+
+    The CLI leaves a marker when the slash command runs it. That reply is
+    "Stopped speaking." or "Repeating the last reply." — speaking it talks over
+    the very thing just asked for, and keeping it makes it the reply `again`
+    repeats next. The marker is used up either way.
+    """
+    if not session:
+        return False
+    path = cspaths.mute_file(session)
+    try:
+        age = time.time() - os.path.getmtime(path)
+        os.unlink(path)
+    except OSError:
+        return False
+    return age < MUTE_SECONDS
 
 
 def pick_engine(cfg):
@@ -279,13 +332,19 @@ def main():
 
     record_root()
 
+    # Checked before `enabled`, so the reply to /claude-speak:speak off still
+    # uses up its marker rather than leaving it for the next reply.
+    session = str(payload.get("session_id") or "")
+    if answers_a_command(session):
+        return
+
     cfg = load_config()
     if not cfg["enabled"]:
         return
 
     # Identify the terminal this reply came from, so concurrent sessions can be
     # kept apart instead of talking over each other.
-    cfg["_session"] = str(payload.get("session_id") or os.getppid())
+    cfg["_session"] = session or str(os.getppid())
     cwd = payload.get("cwd") or os.getcwd()
     cfg["_label"] = os.path.basename(cwd.rstrip("/")) or "claude"
 
@@ -300,7 +359,7 @@ def main():
 
     # Kept whatever happens next — held, spoken or swallowed by the guard.
     # "I missed that" applies to all three.
-    remember(text, cfg)
+    remember(text, cfg, session)
 
     # A live microphone outranks every other setting: stash the reply and make
     # no sound at all, so a client call is never interrupted.
