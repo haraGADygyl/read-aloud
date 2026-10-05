@@ -36,7 +36,7 @@ ACCEPTED = {
 }
 
 REJECTED = {
-    "no type": "Read any file aloud with claude-speak read",
+    "no type": "Read any file aloud with read-aloud read",
     "old repo style": "Release 0.4.0",
     "unknown type": "feature: read any file aloud",
     "no space after colon": "feat:read any file aloud",

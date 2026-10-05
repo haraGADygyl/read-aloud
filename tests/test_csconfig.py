@@ -3,7 +3,7 @@
 
     python3 -m unittest discover tests
 
-This is what replaced jq in bin/claude-speak, so it has to behave the way the
+This is what replaced jq in bin/read-aloud, so it has to behave the way the
 jq expressions did: defaults underneath the user's choices, held replies read
 back oldest first, and a scope of "" meaning every project.
 """
@@ -31,8 +31,8 @@ class Base(unittest.TestCase):
         self.cfg = os.path.join(self.dir, "config.json")
         self.held = os.path.join(self.dir, "held.jsonl")
         self.env = dict(os.environ,
-                        CLAUDE_SPEAK_HOME=self.dir,
-                        CLAUDE_SPEAK_CONFIG=self.cfg)
+                        READ_ALOUD_HOME=self.dir,
+                        READ_ALOUD_CONFIG=self.cfg)
 
     def run_cli(self, *args):
         return subprocess.run([sys.executable, CLI] + list(args),
@@ -182,14 +182,14 @@ class NoDuplicateDefaults(unittest.TestCase):
     """
 
     def test_no_json_heredoc_in_the_shell(self):
-        for rel in ("bin/claude-speak", "scripts/install.sh"):
+        for rel in ("bin/read-aloud", "scripts/install.sh"):
             with self.subTest(rel):
                 with open(os.path.join(ROOT, rel)) as fh:
                     self.assertIsNone(re.search(r"<<'JSON'", fh.read()),
                                       "%s carries its own defaults again" % rel)
 
     def test_the_shell_does_not_need_jq(self):
-        for rel in ("bin/claude-speak", "scripts/install.sh"):
+        for rel in ("bin/read-aloud", "scripts/install.sh"):
             with self.subTest(rel):
                 with open(os.path.join(ROOT, rel)) as fh:
                     calls = [ln for ln in fh

@@ -70,7 +70,7 @@ class SameSession(unittest.TestCase):
         self.assertEqual([j.text for j in sp.queue], ["other", "newest"])
 
     def test_the_default_for_a_reply_that_does_not_say_is_interrupt(self):
-        # `claude-speak read` and `again` send no --same; asking twice has
+        # `read-aloud read` and `again` send no --same; asking twice has
         # always restarted rather than queued, and still does.
         sp = Quiet().speaking("cli")
         sp.submit(kokorod.Job({"session": "cli", "text": "again"}))

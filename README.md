@@ -1,4 +1,4 @@
-# claude-speak
+# read-aloud
 
 Claude Code reads its replies aloud, in a natural voice, entirely on your machine.
 
@@ -10,26 +10,45 @@ Built for people who'd rather listen than read a wall of text — and for anyone
 whose eyes are done for the day.
 
 ```
-/plugin marketplace add haraGADygyl/claude-speak
-/plugin install claude-speak
+/plugin marketplace add haraGADygyl/read-aloud
+/plugin install read-aloud
 ```
 
 Restart Claude Code — or run `/reload-plugins` — then fetch the voice model
 (~338 MB), once:
 
 ```
-/claude-speak:speak install
+/read-aloud:speak install
 ```
 
 Claude Code namespaces every plugin command as `<plugin>:<skill>`, which is
 why the name is that long one; the menu finds it as soon as you start typing.
 
 Use it rather than a shell for this first run: the installer is what puts
-`claude-speak` on your PATH, by linking it into `~/.local/bin`. After it
-finishes, `claude-speak …` and `/claude-speak:speak …` are interchangeable.
+`read-aloud` on your PATH, by linking it into `~/.local/bin`. After it
+finishes, `read-aloud …` and `/read-aloud:speak …` are interchangeable.
 
 That is the whole setup. No second restart — the Stop hook loaded with the
 plugin, and it starts using the neural voice on the next reply.
+
+### Coming from claude-speak
+
+This plugin was called **claude-speak** until 0.10.0. Claude Code now refuses
+third-party plugin names that start with `claude-`, so it was renamed. Updating
+the old one will not get you here; swap it once:
+
+```
+claude plugin uninstall claude-speak@claude-speak
+claude plugin marketplace remove claude-speak
+claude plugin marketplace add haraGADygyl/read-aloud
+claude plugin install read-aloud@read-aloud
+```
+
+Then restart Claude Code, or run `/reload-plugins`, in every open terminal.
+Nothing is downloaded again. The first reply, or the first `read-aloud`
+command, moves your model, settings, held replies and daemon over from the
+old `claude-speak` folders, and removes the `claude-speak` command.
+`/claude-speak:speak` is `/read-aloud:speak` from now on.
 
 ## Quiet by default
 
@@ -37,7 +56,7 @@ Nothing ever starts talking on its own. When a reply finishes you get a short
 ding and a desktop notification; you hear it when *you* ask:
 
 ```
-claude-speak play
+read-aloud play
 ```
 
 That plays what *this* terminal produced; `play all` covers every project.
@@ -46,16 +65,16 @@ finishing mid-meeting and a voice announcing your code to a client. Two layers
 prevent it.
 
 **Replies are held.** They're stashed with a notification rather than spoken.
-`claude-speak play` reads back what this terminal was working on, oldest first.
-Prefer it to just talk? `claude-speak hold off`.
+`read-aloud play` reads back what this terminal was working on, oldest first.
+Prefer it to just talk? `read-aloud hold off`.
 
 **The meeting guard.** Even with auto-speak on, nothing is spoken — and no ding
 plays — while an application is recording from your microphone. If you're on a
 call, you're not interrupted, whether or not you remembered to arm anything.
 
 ```
-claude-speak guard test     # is the guard active right now, and what tripped it
-claude-speak guard off      # disable it
+read-aloud guard test     # is the guard active right now, and what tripped it
+read-aloud guard off      # disable it
 ```
 
 It works by checking for live recording streams (PulseAudio/PipeWire source
@@ -71,8 +90,8 @@ plus Spanish, French, Italian, Portuguese, Hindi, Japanese and Chinese. Hear the
 best English ones and pick:
 
 ```
-claude-speak audition
-claude-speak voice bm_george
+read-aloud audition
+read-aloud voice bm_george
 ```
 
 **It starts immediately.** A warm daemon keeps the model loaded, so there's no
@@ -87,7 +106,7 @@ URLs become *"link"*. Markdown, tables, and emoji are stripped.
 **You can ask for it again.** Missed the end of a reply, or the room got loud?
 
 ```
-claude-speak again
+read-aloud again
 ```
 
 It re-reads the last reply from this project, exactly as it was spoken —
@@ -95,7 +114,7 @@ already stripped of markdown, already cut to `maxChars`. It works whether the
 reply was spoken or held, and asking twice restarts it rather than queueing.
 
 Several terminals open in one project share that copy, so from a shell you get
-whichever finished last. `/claude-speak:speak again` knows which session it was
+whichever finished last. `/read-aloud:speak again` knows which session it was
 typed in and reads that session's own last reply. Claude's one-line answer to
 the slash command — *"Stopped speaking."* — is neither spoken nor remembered,
 so it never becomes the reply `again` repeats.
@@ -104,20 +123,20 @@ so it never becomes the reply `again` repeats.
 same voice, same markdown stripping:
 
 ```
-claude-speak read RFC.md
-git log -5 | claude-speak read -
+read-aloud read RFC.md
+git log -5 | read-aloud read -
 ```
 
-It tells you how long the file will take before it starts, and `claude-speak
+It tells you how long the file will take before it starts, and `read-aloud
 stop` ends it early. Binary files are refused rather than read aloud.
 
 **It writes files you can take with you.** Point `save` at a document — or a
 whole directory of them — and you get MP3s instead of sound:
 
 ```
-claude-speak save docs/ -o ~/audio     # every .md in docs/, one MP3 each
-claude-speak save RFC.md               # RFC.md -> RFC.mp3, here
-claude-speak save notes.md -o trip.wav # no encoder on the machine? ask for wav
+read-aloud save docs/ -o ~/audio     # every .md in docs/, one MP3 each
+read-aloud save RFC.md               # RFC.md -> RFC.mp3, here
+read-aloud save notes.md -o trip.wav # no encoder on the machine? ask for wav
 ```
 
 Nothing is played, so this is safe to run in an open-plan office. Each file
@@ -130,16 +149,16 @@ a reply from another project waits its turn and introduces itself — *"From api
 server. The migration finished…"* — instead of cutting off whatever is speaking.
 Replies from the *same* terminal queue too, so a run of subagents reporting
 back is read one after another rather than each one cutting off the last —
-`claude-speak same interrupt` goes back to only ever hearing the newest.
+`read-aloud same interrupt` goes back to only ever hearing the newest.
 
 **It waits until you're back.** This is the default. Replies are stashed and
 announced rather than spoken, so nothing surprises you:
 
 ```
-claude-speak play              # this terminal's project only
-claude-speak play all          # every project, announced by name
-claude-speak play api-server   # one named project
-claude-speak pending           # what's waiting, * marks this terminal's
+read-aloud play              # this terminal's project only
+read-aloud play all          # every project, announced by name
+read-aloud play api-server   # one named project
+read-aloud pending           # what's waiting, * marks this terminal's
 ```
 
 `play` defaults to the project you're standing in, so a terminal only ever
@@ -150,8 +169,8 @@ hearing more than one.
 
 ## Controls
 
-Every command works from a shell as `claude-speak …` or inside Claude Code as
-`/claude-speak:speak …`.
+Every command works from a shell as `read-aloud …` or inside Claude Code as
+`/read-aloud:speak …`.
 
 | Command | What it does |
 | --- | --- |
@@ -178,7 +197,7 @@ Every command works from a shell as `claude-speak …` or inside Claude Code as
 | `restart` / `log` | Daemon control |
 | `install` | Fetch the neural voice model — one time |
 
-Inside Claude Code, `! claude-speak stop` is instant — the `!` prefix runs the
+Inside Claude Code, `! read-aloud stop` is instant — the `!` prefix runs the
 shell command without a model round trip, which matters when you want silence
 *now*.
 
@@ -214,9 +233,9 @@ short temporary wav played to completion. Speech still starts after the first
 sentence; it just is not one continuous pipe. `ffmpeg` or `sox` switches it to
 the streaming path, but neither is needed.
 
-Without the model installed, claude-speak falls back to `spd-say` / `espeak-ng`
+Without the model installed, read-aloud falls back to `spd-say` / `espeak-ng`
 (Linux) or `say` (macOS). It works immediately; it just sounds robotic until you
-run `claude-speak install`.
+run `read-aloud install`.
 
 ---
 
@@ -248,15 +267,15 @@ update never re-downloads 338 MB:
 
 | Path | Contents |
 | --- | --- |
-| `~/.config/claude-speak/config.json` | Your settings |
-| `~/.local/share/claude-speak/models/` | Kokoro model + voices |
-| `~/.local/share/claude-speak/venv/` | Python environment |
-| `~/.local/share/claude-speak/held.jsonl` | Replies waiting in hold mode |
-| `~/.local/share/claude-speak/last/` | The most recent reply per project, and per session under `sessions/` (kept 30 days), for `again` |
-| `~/.local/share/claude-speak/plugin-root` | Which plugin directory is installed, so the PATH link and the daemon survive an update |
-| `$XDG_RUNTIME_DIR/claude-speak.sock` | Daemon socket |
+| `~/.config/read-aloud/config.json` | Your settings |
+| `~/.local/share/read-aloud/models/` | Kokoro model + voices |
+| `~/.local/share/read-aloud/venv/` | Python environment |
+| `~/.local/share/read-aloud/held.jsonl` | Replies waiting in hold mode |
+| `~/.local/share/read-aloud/last/` | The most recent reply per project, and per session under `sessions/` (kept 30 days), for `again` |
+| `~/.local/share/read-aloud/plugin-root` | Which plugin directory is installed, so the PATH link and the daemon survive an update |
+| `$XDG_RUNTIME_DIR/read-aloud.sock` | Daemon socket |
 
-Override with `CLAUDE_SPEAK_HOME` and `CLAUDE_SPEAK_CONFIG`.
+Override with `READ_ALOUD_HOME` and `READ_ALOUD_CONFIG`.
 
 The text cleaning is the part with edge cases — `src/api/parser.py:42` has to
 shorten while `and/or` and `24/7` stay put. It has tests, and they need nothing
@@ -293,10 +312,11 @@ and stays inert — hold mode is the fallback there.
 ## Uninstall
 
 ```
-/plugin uninstall claude-speak
-systemctl --user disable --now claude-speak.service
-rm -rf ~/.local/share/claude-speak ~/.config/claude-speak
-rm -f ~/.config/systemd/user/claude-speak.service
+/plugin uninstall read-aloud
+systemctl --user disable --now read-aloud.service
+rm -rf ~/.local/share/read-aloud ~/.config/read-aloud
+rm -f ~/.config/systemd/user/read-aloud.service ~/.local/bin/read-aloud
+rm -f ~/.local/share/claude-speak ~/.config/claude-speak   # links left by the rename
 ```
 
 ---

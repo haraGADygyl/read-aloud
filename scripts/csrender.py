@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Render documents to audio files — the offline half of claude-speak.
+"""Render documents to audio files — the offline half of read-aloud.
 
 Runs under the venv python, like the daemon, because it needs numpy and
 kokoro_onnx. It plays nothing: every sample goes to an mp3 (or a wav) you can
-copy to a phone. Reached through `claude-speak save`.
+copy to a phone. Reached through `read-aloud save`.
 
     csrender.py --voice af_heart --speed 1.0 -o ~/audio docs/ README.md
 
@@ -152,7 +152,7 @@ def render(kokoro, src, out, voice, speed, say_title=True, show_progress=False):
 
 def main():
     ap = argparse.ArgumentParser(
-        prog="claude-speak save",
+        prog="read-aloud save",
         description="Write documents to audio files you can take with you.")
     ap.add_argument("sources", nargs="+", metavar="FILE|DIR")
     ap.add_argument("-o", "--out", metavar="DEST",
@@ -188,7 +188,7 @@ def main():
         return 1
 
     if not cspaths.kokoro_ready():
-        print("run 'claude-speak install' first")
+        print("run 'read-aloud install' first")
         return 1
     print("loading the voice model…", flush=True)
     with quiet_stderr():

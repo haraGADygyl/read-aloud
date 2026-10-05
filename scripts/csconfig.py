@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Config and held-reply plumbing for bin/claude-speak.
+"""Config and held-reply plumbing for bin/read-aloud.
 
 This exists so the CLI needs no `jq`. python3 is already required by every
 other part of the plugin, so leaning on it removes a system package instead
@@ -9,7 +9,7 @@ defaults are written down.
     csconfig.py config ensure          create or top up config.json
     csconfig.py config get <key>       one value, shell-friendly
     csconfig.py config set <key> <v>   v is JSON, else treated as a string
-    csconfig.py config summary         the block `claude-speak status` prints
+    csconfig.py config summary         the block `read-aloud status` prints
 
     csconfig.py held count [label]     "" or absent means every project
     csconfig.py held labels            "name (N waiting)" per project

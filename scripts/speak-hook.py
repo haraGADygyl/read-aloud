@@ -17,6 +17,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cspaths  # noqa: E402
+import csmigrate  # noqa: E402
 from cstext import clean, load_config  # noqa: E402
 
 
@@ -56,7 +57,7 @@ def last_assistant_text(payload):
 def record_root():
     """Note the plugin directory this hook is running from.
 
-    The hook is the only part of claude-speak that is always the installed
+    The hook is the only part of read-aloud that is always the installed
     version — a plugin update moves ${CLAUDE_PLUGIN_ROOT} and leaves the old
     directory on disk, still resolvable. The PATH link and the systemd unit
     are absolute paths into it, so they need to be told where it went.
@@ -92,7 +93,7 @@ def notify(title, body):
     if shutil.which("notify-send"):
         cmd = ["notify-send", "-a", "Claude Code", "-i", "utilities-terminal",
                # Collapse repeats into one notification instead of a stack.
-               "-h", "string:x-canonical-private-synchronous:claude-speak",
+               "-h", "string:x-canonical-private-synchronous:read-aloud",
                title, body]
     elif platform.system() == "Darwin" and shutil.which("osascript"):
         cmd = ["osascript", "-e",
@@ -187,13 +188,13 @@ def hold(text, cfg, quiet=False):
     except OSError:
         pass
     notify("Claude · %s" % cfg["_label"],
-           "Reply ready — %d waiting. Run: claude-speak play" % waiting)
+           "Reply ready — %d waiting. Run: read-aloud play" % waiting)
     if not quiet:
         ding(cfg)
 
 
 def remember(text, cfg, session):
-    """Keep this reply so `claude-speak again` can read it back.
+    """Keep this reply so `read-aloud again` can read it back.
 
     Stored after cleaning and after the maxChars cut, so a repeat is the same
     words in the same order rather than nearly so. One file per project, keyed
@@ -201,7 +202,7 @@ def remember(text, cfg, session):
     in the same directory can finish at the same moment.
 
     And one per session, because the project file belongs to whichever session
-    in that directory finished last — /claude-speak:speak again once read a
+    in that directory finished last — /read-aloud:speak again once read a
     neighbouring terminal's reply instead of its own.
     """
     paths = [cspaths.last_file(cfg["_label"])]
@@ -246,7 +247,7 @@ MUTE_SECONDS = 120
 
 
 def answers_a_command(session):
-    """True for the reply that reports a /claude-speak:speak run.
+    """True for the reply that reports a /read-aloud:speak run.
 
     The CLI leaves a marker when the slash command runs it. That reply is
     "Stopped speaking." or "Repeating the last reply." — speaking it talks over
@@ -330,9 +331,14 @@ def main():
     except ValueError:
         payload = {}
 
+    # The first reply after switching from claude-speak carries its state
+    # over — before record_root, which would otherwise start a fresh data
+    # directory where the old one, model and all, is about to be moved to.
+    if not csmigrate.redirected():
+        csmigrate.migrate()
     record_root()
 
-    # Checked before `enabled`, so the reply to /claude-speak:speak off still
+    # Checked before `enabled`, so the reply to /read-aloud:speak off still
     # uses up its marker rather than leaving it for the next reply.
     session = str(payload.get("session_id") or "")
     if answers_a_command(session):

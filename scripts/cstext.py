@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Settings, and turning markdown into something worth listening to.
 
-Shared by the Stop hook and `claude-speak read`, so a file you ask for aloud is
+Shared by the Stop hook and `read-aloud read`, so a file you ask for aloud is
 cleaned up exactly the way a reply is. Standard library only: the hook runs on
 whatever python3 the system provides.
 
@@ -40,7 +40,7 @@ DEFAULTS = {
     "sameSession": "queue",
     # Replies are held by default: stashed with a notification rather than
     # spoken. Nothing ever starts talking unless you asked it to. Turn this off
-    # (`claude-speak hold off`) to have replies read out as they finish.
+    # (`read-aloud hold off`) to have replies read out as they finish.
     "holdReplies": True,
     "notify": True,
     # Short sound when a reply lands in hold mode. Path to an audio file, or
@@ -48,7 +48,7 @@ DEFAULTS = {
     "holdSound": "",
     # Never speak while something is recording from the microphone — you are on
     # a call. Applies even with holdReplies off, and suppresses the ding too, so
-    # a meeting stays quiet. See `claude-speak guard`.
+    # a meeting stays quiet. See `read-aloud guard`.
     "meetingGuard": True,
     # Recording apps that should NOT count as "in a meeting" (substring match,
     # case-insensitive), e.g. an always-on hotword listener.

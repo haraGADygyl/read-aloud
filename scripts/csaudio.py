@@ -28,7 +28,7 @@ def stream_cmd(rate):
     """A player that accepts raw s16le mono on stdin, or None if there is none."""
     if shutil.which("paplay"):
         return ["paplay", "--raw", "--format=s16le",
-                "--rate=%d" % rate, "--channels=1", "--client-name=ClaudeSpeak"]
+                "--rate=%d" % rate, "--channels=1", "--client-name=ReadAloud"]
     if shutil.which("pw-play"):
         # Ships with PipeWire itself, unlike paplay, which needs a separate
         # pulseaudio-utils package that plenty of desktops do not install.
@@ -74,7 +74,7 @@ def wav_bytes(pcm, rate):
 
 def write_temp_wav(pcm, rate):
     """A wav on disk for a file-only player. The caller unlinks it."""
-    fd, path = tempfile.mkstemp(suffix=".wav", prefix="claude-speak-")
+    fd, path = tempfile.mkstemp(suffix=".wav", prefix="read-aloud-")
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(wav_bytes(pcm, rate))

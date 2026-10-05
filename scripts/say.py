@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Client for the claude-speak daemon. Standard library only, so the Stop hook
+"""Client for the read-aloud daemon. Standard library only, so the Stop hook
 can call it with whatever python3 is on the system.
 
     say.py "some text"              speak it
@@ -19,7 +19,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cspaths  # noqa: E402
 
-SERVICE = "claude-speak.service"
+SERVICE = "read-aloud.service"
 
 
 def connect(timeout=1.0):
@@ -97,7 +97,7 @@ def main():
         print(out if out else "daemon not running")
         sys.exit(0 if out else 1)
 
-    voice = os.environ.get("CLAUDE_SPEAK_VOICE", "af_heart")
+    voice = os.environ.get("READ_ALOUD_VOICE", "af_heart")
     speed, session, label, mode = 1.0, "cli", "", "queue"
     same = "interrupt"      # a second `read` or `play` replaces the first
     while args and args[0].startswith("--"):

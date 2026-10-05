@@ -1,37 +1,37 @@
 #!/usr/bin/env bash
-# claude-speak — control Claude Code's spoken replies.
+# read-aloud — control Claude Code's spoken replies.
 #
-#   claude-speak install         download the neural voice model (one time)
-#   claude-speak [status]        show current settings
-#   claude-speak on | off        toggle reading replies aloud
-#   claude-speak stop            shut up right now
-#   claude-speak again           read the last reply again — you missed it
-#   claude-speak test            speak a sample line
-#   claude-speak read FILE       read a file aloud (- for stdin)
-#   claude-speak save FILE|DIR   write it to an MP3 instead (-o DIR|FILE.mp3)
-#   claude-speak voice af_bella  pick a voice
-#   claude-speak voices          list every voice
-#   claude-speak audition        hear the best English voices back to back
-#   claude-speak speed 1.2       0.5 = slow, 1.0 = normal, 1.5 = fast
-#   claude-speak max 4000        max characters read per reply
-#   claude-speak mode queue      several terminals: queue | interrupt | drop
-#   claude-speak same queue      this terminal's own run of replies:
-#                                queue | interrupt
-#   claude-speak queue           what is speaking and what is waiting
-#   claude-speak restart         restart the TTS daemon
-#   claude-speak log             tail the daemon log
+#   read-aloud install         download the neural voice model (one time)
+#   read-aloud [status]        show current settings
+#   read-aloud on | off        toggle reading replies aloud
+#   read-aloud stop            shut up right now
+#   read-aloud again           read the last reply again — you missed it
+#   read-aloud test            speak a sample line
+#   read-aloud read FILE       read a file aloud (- for stdin)
+#   read-aloud save FILE|DIR   write it to an MP3 instead (-o DIR|FILE.mp3)
+#   read-aloud voice af_bella  pick a voice
+#   read-aloud voices          list every voice
+#   read-aloud audition        hear the best English voices back to back
+#   read-aloud speed 1.2       0.5 = slow, 1.0 = normal, 1.5 = fast
+#   read-aloud max 4000        max characters read per reply
+#   read-aloud mode queue      several terminals: queue | interrupt | drop
+#   read-aloud same queue      this terminal's own run of replies:
+#                              queue | interrupt
+#   read-aloud queue           what is speaking and what is waiting
+#   read-aloud restart         restart the TTS daemon
+#   read-aloud log             tail the daemon log
 #
 # Replies are HELD by default — stashed with a notification, never spoken
-# unless you ask. "claude-speak hold off" makes them read out automatically.
+# unless you ask. "read-aloud hold off" makes them read out automatically.
 #
-#   claude-speak pending         list what is waiting
-#   claude-speak play            speak THIS terminal's replies, oldest first
-#   claude-speak play all        speak every project's replies
-#   claude-speak play <project>  speak one project's replies
-#   claude-speak clear [all|project]  discard what is waiting
-#   claude-speak hold off | on   auto-speak replies, or hold them
-#   claude-speak sound <file>    ding when a reply lands (off | default | path)
-#   claude-speak guard on|off|test  meeting guard: mic live = silence
+#   read-aloud pending         list what is waiting
+#   read-aloud play            speak THIS terminal's replies, oldest first
+#   read-aloud play all        speak every project's replies
+#   read-aloud play <project>  speak one project's replies
+#   read-aloud clear [all|project]  discard what is waiting
+#   read-aloud hold off | on   auto-speak replies, or hold them
+#   read-aloud sound <file>    ding when a reply lands (off | default | path)
+#   read-aloud guard on|off|test  meeting guard: mic live = silence
 set -uo pipefail
 
 # Resolve symlinks so this works when linked into ~/.local/bin. Done by hand
@@ -46,10 +46,10 @@ while [ -L "$SELF" ]; do
 done
 HERE="$(cd "$(dirname "$SELF")" && pwd)"
 SCRIPTS="$(cd "$HERE/../scripts" && pwd)" || {
-  echo "claude-speak: cannot find scripts/ next to $HERE" >&2; exit 1; }
+  echo "read-aloud: cannot find scripts/ next to $HERE" >&2; exit 1; }
 
-DATA="${CLAUDE_SPEAK_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/claude-speak}"
-CFG="${CLAUDE_SPEAK_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/claude-speak/config.json}"
+DATA="${READ_ALOUD_HOME:-${CLAUDE_SPEAK_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/read-aloud}}"
+CFG="${READ_ALOUD_CONFIG:-${CLAUDE_SPEAK_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/read-aloud/config.json}}"
 HELD="$DATA/held.jsonl"
 VENV_PY="$DATA/venv/bin/python"
 SAY=(python3 "$SCRIPTS/say.py")
@@ -61,8 +61,15 @@ CS=(python3 "$SCRIPTS/csconfig.py")
 
 # shellcheck source=../scripts/csheal.sh
 . "$SCRIPTS/csheal.sh"
-UNIT="$HOME/.config/systemd/user/claude-speak.service"
+UNIT="$HOME/.config/systemd/user/read-aloud.service"
 POINTER="$DATA/plugin-root"
+
+wait_for_daemon() {
+  for _ in {1..10}; do
+    "${SAY[@]}" --status >/dev/null 2>&1 && break
+    sleep 0.2
+  done
+}
 
 # A plugin update moves the directory this script lives in, and both the PATH
 # link and the systemd unit name the old one absolutely. The daemon then goes
@@ -78,28 +85,45 @@ heal() {
   # different world — while the link and the unit repaired from it are the
   # real ones, under $HOME. That combination once re-pointed a live daemon at
   # a working tree and left it failing 203/EXEC until the unit was rewritten.
-  [[ -n "${CLAUDE_SPEAK_HOME:-}${CLAUDE_SPEAK_CONFIG:-}" ]] && return 0
+  cs_redirected && return 0
 
   scripts="$(cs_scripts_from_pointer "$POINTER")" || return 0
 
   cs_unit_sync "$UNIT" "$VENV_PY" "$scripts"; rc=$?
   [[ "$rc" == 10 || "$rc" == 13 ]] \
-    && echo "claude-speak: daemon unit re-pointed at the installed version"
+    && echo "read-aloud: daemon unit re-pointed at the installed version"
 
   # systemctl returns once the process is exec'd, but the daemon only accepts
   # on its socket after the model is mapped — a second or so. Without this,
   # the status block below asks in that gap and reports a daemon that is
   # starting perfectly well as "stopped". Two seconds at the outside, and
   # only on the run that actually restarted it.
-  if [[ "$rc" == 13 ]]; then
-    for _ in {1..10}; do
-      "${SAY[@]}" --status >/dev/null 2>&1 && break
-      sleep 0.2
-    done
-  fi
+  [[ "$rc" == 13 ]] && wait_for_daemon
 
   cs_link_sync "$HOME/.local/bin" "$scripts"; rc=$?
-  [[ "$rc" == 11 ]] && echo "claude-speak: $HOME/.local/bin/claude-speak re-pointed at the installed version"
+  [[ "$rc" == 11 ]] && echo "read-aloud: $HOME/.local/bin/read-aloud re-pointed at the installed version"
+  return 0
+}
+
+# This was claude-speak until 0.10.0. Runs before ensure_cfg, which would
+# otherwise write a fresh config where the old one is about to be moved to.
+# The directories move first, then the unit — whose ExecStart wants the
+# pointer, which still names the claude-speak copy until the hook next runs,
+# so this release stands in until heal() puts it right.
+migrate() {
+  local scripts rc
+  python3 "$SCRIPTS/csmigrate.py"
+  cs_redirected && return 0
+
+  scripts="$(cs_scripts_from_pointer "$POINTER")" || scripts="$SCRIPTS"
+  cs_unit_migrate "$HOME/.config/systemd/user/claude-speak.service" "$UNIT" \
+    "$VENV_PY" "$scripts"; rc=$?
+  [[ "$rc" == 10 || "$rc" == 13 ]] \
+    && echo "read-aloud: replaced the claude-speak daemon unit with $(basename "$UNIT")"
+  [[ "$rc" == 13 ]] && wait_for_daemon
+
+  cs_link_retire "$HOME/.local/bin"
+  [[ $? == 11 ]] && echo "read-aloud: removed $HOME/.local/bin/claude-speak — the command is read-aloud now"
   return 0
 }
 
@@ -132,11 +156,11 @@ status() {
   if kokoro_ready; then
     printf 'engine:  kokoro (neural, local)\n'
   else
-    printf 'engine:  system fallback — run "claude-speak install" for the neural voice\n'
+    printf 'engine:  system fallback — run "read-aloud install" for the neural voice\n'
   fi
 
   local unit daemon
-  unit=$(systemctl --user is-active claude-speak.service 2>/dev/null)
+  unit=$(systemctl --user is-active read-aloud.service 2>/dev/null)
   if "${SAY[@]}" --status >/dev/null 2>&1; then
     [[ "$unit" == "active" ]] && daemon="running (systemd)" || daemon="running (on demand)"
   else
@@ -161,16 +185,16 @@ commands() {
   ' "$SELF" | sort -u
 }
 
-# Usage errors print on stdout, not stderr. /claude-speak:speak reports back
+# Usage errors print on stdout, not stderr. /read-aloud:speak reports back
 # whatever the binary printed, and a message sent only to stderr reaches the
 # user as an empty reply — the one thing worse than an ugly error.
-usage() { echo "usage: claude-speak $1"; exit 2; }
+usage() { echo "usage: read-aloud $1"; exit 2; }
 
 unknown() {
   local hint
-  echo "claude-speak: no such command \"$1\""
+  echo "read-aloud: no such command \"$1\""
   hint=$("${CS[@]}" suggest "$1" $(commands) 2>/dev/null)
-  [[ -n "$hint" ]] && echo "did you mean: claude-speak $hint"
+  [[ -n "$hint" ]] && echo "did you mean: read-aloud $hint"
   echo
   echo "commands:"
   # Commas to separate them and fold -s to break between them: one long line
@@ -181,11 +205,11 @@ unknown() {
   commands | paste -sd, - | sed 's/,/, /g' | fold -s -w 72 \
     | sed 's/[[:space:]]*$//; s/^/  /'
   echo
-  echo "what each does: claude-speak --help"
+  echo "what each does: read-aloud --help"
   exit 2
 }
 
-# /claude-speak:speak passes the Claude Code session it was typed in. Several
+# /read-aloud:speak passes the Claude Code session it was typed in. Several
 # sessions often share one directory, so `again` needs the session to find its
 # own reply, and the hook needs telling that the session's next reply is only
 # Claude reporting this command. Never set from a plain shell.
@@ -196,6 +220,7 @@ if [[ "${1:-}" == --session ]]; then
   [[ $# -gt 0 ]] && shift
 fi
 
+migrate
 ensure_cfg
 heal
 
@@ -204,8 +229,8 @@ heal
 case "${1:-status}" in
   install) exec bash "$SCRIPTS/install.sh" "${@:2}" ;;
 
-  on)   set_key enabled "true";  echo "claude-speak: on" ;;
-  off)  set_key enabled "false"; "${SAY[@]}" --stop 2>/dev/null; echo "claude-speak: off" ;;
+  on)   set_key enabled "true";  echo "read-aloud: on" ;;
+  off)  set_key enabled "false"; "${SAY[@]}" --stop 2>/dev/null; echo "read-aloud: off" ;;
   stop) "${SAY[@]}" --stop 2>/dev/null; spd-say -C 2>/dev/null; pkill -x say 2>/dev/null
         echo "silenced" ;;
 
@@ -250,7 +275,7 @@ case "${1:-status}" in
   hold)
     case "${2:-}" in
       on)  set_key holdReplies "true"
-           echo "hold: on — replies are stashed and announced; play them with: claude-speak play" ;;
+           echo "hold: on — replies are stashed and announced; play them with: read-aloud play" ;;
       off) set_key holdReplies "false"; echo "hold: off — replies are spoken as they finish" ;;
       *)   printf 'hold is %s\n' "$([ "$(get holdReplies)" = "true" ] && echo on || echo off)" ;;
     esac
@@ -297,10 +322,10 @@ case "${1:-status}" in
     mine=$(held count "$here")
     printf '\n%s waiting, %s from this terminal (*)\n' "$total" "$mine"
     if [[ "$mine" == "0" ]]; then
-      echo "  claude-speak play all        hear everything"
+      echo "  read-aloud play all        hear everything"
     elif [[ "$mine" != "$total" ]]; then
-      echo "  claude-speak play            hear this terminal's $mine"
-      echo "  claude-speak play all        hear all $total"
+      echo "  read-aloud play            hear this terminal's $mine"
+      echo "  read-aloud play all        hear all $total"
     fi
     ;;
 
@@ -312,7 +337,7 @@ case "${1:-status}" in
     if [[ "$n" == "0" ]]; then
       echo "nothing waiting for ${want}"
       echo "waiting elsewhere:"; waiting_by_project
-      echo "hear everything with: claude-speak play all"
+      echo "hear everything with: read-aloud play all"
       exit 0
     fi
 
@@ -337,7 +362,7 @@ case "${1:-status}" in
     ;;
 
   voices)
-    kokoro_ready || { echo "run 'claude-speak install' first"; exit 1; }
+    kokoro_ready || { echo "run 'read-aloud install' first"; exit 1; }
     "$VENV_PY" -c "
 import sys; sys.path.insert(0, '$SCRIPTS')
 import cspaths
@@ -349,8 +374,8 @@ print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" 2>
     ;;
 
   audition)
-    kokoro_ready || { echo "run 'claude-speak install' first"; exit 1; }
-    echo "Pick one afterwards with:  claude-speak voice <name>"
+    kokoro_ready || { echo "run 'read-aloud install' first"; exit 1; }
+    echo "Pick one afterwards with:  read-aloud voice <name>"
     "${SAY[@]}" --stop 2>/dev/null
     shift || true
     "$VENV_PY" "$SCRIPTS/audition.py" "$@" 2>/dev/null
@@ -359,7 +384,7 @@ print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" 2>
   read)
     f="${2:-}"; [[ -n "$f" ]] || usage "read <file>   (- reads stdin)"
     # Claude Code's @-completion inserts the path with an @ on the front, so
-    # "/claude-speak:speak read @docs/x.md" arrives here literally. Strip it only when that
+    # "/read-aloud:speak read @docs/x.md" arrives here literally. Strip it only when that
     # is what makes the path resolve, in case a file really is named @foo.
     [[ "$f" == @* && ! -e "$f" && -e "${f#@}" ]] && f="${f#@}"
     if [[ "$f" != "-" ]]; then
@@ -374,7 +399,7 @@ print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" 2>
     speed=$(get speed)
     # ~14 characters a second at 1.0x — enough of an estimate to warn you before
     # a whole README starts talking. No cap: you asked for this file, not a
-    # sample of it, and "claude-speak stop" ends it early.
+    # sample of it, and "read-aloud stop" ends it early.
     est=$(awk -v c="${#text}" -v s="$speed" 'BEGIN {
       t = int(c / (14 * (s > 0 ? s : 1)))
       if (t >= 60) printf "%dm%02ds", t / 60, t % 60; else printf "%ds", t
@@ -383,12 +408,12 @@ print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" 2>
     # queueing behind it, and piping sidesteps the argv limit on big files.
     printf '%s' "$text" | "${SAY[@]}" --session read-file --label "" \
       --voice "$(get voice)" --speed "$speed"
-    printf 'reading %s — %s chars, about %s. Stop with: claude-speak stop\n' \
+    printf 'reading %s — %s chars, about %s. Stop with: read-aloud stop\n' \
       "$([[ "$f" == "-" ]] && echo "stdin" || basename "$f")" "${#text}" "$est"
     ;;
 
   save)
-    kokoro_ready || { echo "run 'claude-speak install' first"; exit 1; }
+    kokoro_ready || { echo "run 'read-aloud install' first"; exit 1; }
     shift
     [[ $# -gt 0 ]] || {
       usage "save FILE|DIR... [-o DIR|FILE.mp3]"; }
@@ -417,7 +442,7 @@ print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" 2>
     [[ -n "${text//[[:space:]]/}" ]] || { echo "nothing to repeat"; exit 0; }
     printf '%s' "$text" | "${SAY[@]}" --session again --label "" \
       --voice "$(get voice)" --speed "$(get speed)"
-    printf 'repeating the last reply from %s — %s chars. Stop with: claude-speak stop\n' \
+    printf 'repeating the last reply from %s — %s chars. Stop with: read-aloud stop\n' \
       "$want" "${#text}"
     ;;
 
@@ -427,7 +452,7 @@ print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" 2>
     ;;
 
   restart)
-    if systemctl --user restart claude-speak.service 2>/dev/null; then
+    if systemctl --user restart read-aloud.service 2>/dev/null; then
       echo "daemon restarted"
     else
       pkill -f "$SCRIPTS/kokorod.py" 2>/dev/null
@@ -436,7 +461,7 @@ print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" 2>
     ;;
   log)
     tail -n 30 "$DATA/daemon.log" 2>/dev/null
-    journalctl --user -u claude-speak.service -n 20 --no-pager 2>/dev/null
+    journalctl --user -u read-aloud.service -n 20 --no-pager 2>/dev/null
     ;;
 
   status|"") status ;;

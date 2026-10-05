@@ -30,7 +30,7 @@ fail() {
   cat >&2 <<'EOF'
   Conventional Commits: <type>[optional scope][!]: <description>
 
-    feat: read any file aloud with claude-speak read
+    feat: read any file aloud with read-aloud read
     fix(cleaner): keep the paragraph break before a heading
     docs: document the two Python runtimes
     chore(release): 0.4.0

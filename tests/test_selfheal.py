@@ -34,7 +34,7 @@ QUIET_CFG = '{"notify": false, "meetingGuard": false, "holdSound": "off"}'
 
 
 class Shell(unittest.TestCase):
-    """Drive the helpers the way bin/claude-speak and install.sh do."""
+    """Drive the helpers the way bin/read-aloud and install.sh do."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -45,12 +45,12 @@ class Shell(unittest.TestCase):
 
     def plugin_tree(self, version):
         """A directory shaped like an installed plugin of that version."""
-        root = os.path.join(self.dir, "cache", "claude-speak", version)
+        root = os.path.join(self.dir, "cache", "read-aloud", version)
         os.makedirs(os.path.join(root, "scripts"))
         os.makedirs(os.path.join(root, "bin"))
         for rel in ("scripts/cspaths.py", "scripts/kokorod.py"):
             open(os.path.join(root, rel), "w").close()
-        exe = os.path.join(root, "bin", "claude-speak")
+        exe = os.path.join(root, "bin", "read-aloud")
         open(exe, "w").close()
         os.chmod(exe, 0o755)
         return root
@@ -59,7 +59,7 @@ class Shell(unittest.TestCase):
 class LinkSync(Shell):
 
     def link(self):
-        return os.path.join(self.dir, "bin", "claude-speak")
+        return os.path.join(self.dir, "bin", "read-aloud")
 
     def sync(self, scripts):
         return self.sh('cs_link_sync "%s" "%s"; echo "rc=$?"'
@@ -69,7 +69,7 @@ class LinkSync(Shell):
         new = self.plugin_tree("0.7.0")
         self.assertIn("rc=10", self.sync(os.path.join(new, "scripts")).stdout)
         self.assertEqual(os.path.realpath(self.link()),
-                         os.path.join(new, "bin", "claude-speak"))
+                         os.path.join(new, "bin", "read-aloud"))
 
     def test_correct_link_is_left_alone(self):
         new = self.plugin_tree("0.7.0")
@@ -79,27 +79,27 @@ class LinkSync(Shell):
     def test_an_older_copy_is_repaired(self):
         old, new = self.plugin_tree("0.6.2"), self.plugin_tree("0.7.0")
         os.makedirs(os.path.join(self.dir, "bin"))
-        os.symlink(os.path.join(old, "bin", "claude-speak"), self.link())
+        os.symlink(os.path.join(old, "bin", "read-aloud"), self.link())
 
         self.assertIn("rc=11", self.sync(os.path.join(new, "scripts")).stdout)
         self.assertEqual(os.path.realpath(self.link()),
-                         os.path.join(new, "bin", "claude-speak"))
+                         os.path.join(new, "bin", "read-aloud"))
 
     def test_a_deleted_copy_is_repaired(self):
         """Old plugin directories are usually kept, but need not be."""
         old, new = self.plugin_tree("0.6.2"), self.plugin_tree("0.7.0")
         os.makedirs(os.path.join(self.dir, "bin"))
-        os.symlink(os.path.join(old, "bin", "claude-speak"), self.link())
+        os.symlink(os.path.join(old, "bin", "read-aloud"), self.link())
         subprocess.run(["rm", "-rf", old], check=True)
 
         self.assertIn("rc=11", self.sync(os.path.join(new, "scripts")).stdout)
         self.assertEqual(os.path.realpath(self.link()),
-                         os.path.join(new, "bin", "claude-speak"))
+                         os.path.join(new, "bin", "read-aloud"))
 
     def test_somebody_elses_binary_is_never_touched(self):
         new = self.plugin_tree("0.7.0")
         os.makedirs(os.path.join(self.dir, "bin"))
-        theirs = os.path.join(self.dir, "their-claude-speak")
+        theirs = os.path.join(self.dir, "their-read-aloud")
         open(theirs, "w").close()
         os.symlink(theirs, self.link())
 
@@ -119,7 +119,7 @@ class LinkSync(Shell):
 class UnitSync(Shell):
 
     def unit(self):
-        return os.path.join(self.dir, "claude-speak.service")
+        return os.path.join(self.dir, "read-aloud.service")
 
     def exec_start(self):
         with open(self.unit()) as fh:
@@ -154,7 +154,7 @@ class UnitRestart(Shell):
 
     systemctl returns as soon as the process is exec'd, so a status check
     straight afterwards reported a starting daemon as stopped. The distinct
-    code is what tells bin/claude-speak to wait for the socket — and only
+    code is what tells bin/read-aloud to wait for the socket — and only
     then, so an unenabled unit costs nothing.
     """
 
@@ -179,7 +179,7 @@ class UnitRestart(Shell):
             return ""
 
     def sync(self, is_enabled):
-        unit = os.path.join(self.dir, "claude-speak.service")
+        unit = os.path.join(self.dir, "read-aloud.service")
         subprocess.run(["bash", "-c", '. %s\ncs_unit_write "%s" /venv/py /old/scripts'
                         % (HEAL, unit)], check=True)
         env = dict(os.environ, PATH=self.fake_systemctl(is_enabled) + os.pathsep
@@ -190,7 +190,7 @@ class UnitRestart(Shell):
 
     def test_restarted_when_the_service_is_enabled(self):
         self.assertIn("rc=13", self.sync(True).stdout)
-        self.assertIn("restart claude-speak.service", self.calls())
+        self.assertIn("restart read-aloud.service", self.calls())
 
     def test_not_restarted_when_it_is_not_enabled(self):
         self.assertIn("rc=10", self.sync(False).stdout)
@@ -198,7 +198,7 @@ class UnitRestart(Shell):
 
 
 class RedirectedStateIsLeftAlone(unittest.TestCase):
-    """CLAUDE_SPEAK_HOME redirects the state, never $HOME.
+    """READ_ALOUD_HOME redirects the state, never $HOME.
 
     The pointer then describes a scratch world while the link and the unit
     being repaired from it are the real ones. A test run that forgot to
@@ -213,20 +213,20 @@ class RedirectedStateIsLeftAlone(unittest.TestCase):
         os.makedirs(os.path.join(home, ".local", "bin"))
         os.makedirs(data)
 
-        stale = os.path.join(sandbox, "stale-claude-speak")
+        stale = os.path.join(sandbox, "stale-read-aloud")
         open(stale, "w").close()
-        link = os.path.join(home, ".local", "bin", "claude-speak")
+        link = os.path.join(home, ".local", "bin", "read-aloud")
         os.symlink(stale, link)
 
         # A pointer that would otherwise be acted on.
         with open(os.path.join(data, "plugin-root"), "w") as fh:
             fh.write(os.path.join(ROOT, "scripts") + "\n")
 
-        subprocess.run(["bash", os.path.join(ROOT, "bin", "claude-speak"), "hold"],
+        subprocess.run(["bash", os.path.join(ROOT, "bin", "read-aloud"), "hold"],
                        capture_output=True, text=True,
                        env=dict(os.environ, HOME=home,
-                                CLAUDE_SPEAK_HOME=data,
-                                CLAUDE_SPEAK_CONFIG=os.path.join(sandbox, "c.json"),
+                                READ_ALOUD_HOME=data,
+                                READ_ALOUD_CONFIG=os.path.join(sandbox, "c.json"),
                                 XDG_RUNTIME_DIR=sandbox))
 
         self.assertEqual(os.readlink(link), stale)
@@ -241,8 +241,8 @@ class Pointer(unittest.TestCase):
         with open(self.cfg, "w") as fh:
             fh.write(QUIET_CFG)
         self.env = dict(os.environ,
-                        CLAUDE_SPEAK_HOME=self.dir,
-                        CLAUDE_SPEAK_CONFIG=self.cfg)
+                        READ_ALOUD_HOME=self.dir,
+                        READ_ALOUD_CONFIG=self.cfg)
         self.pointer = os.path.join(self.dir, "plugin-root")
 
     def run_hook(self):
@@ -268,7 +268,7 @@ class Pointer(unittest.TestCase):
         os.makedirs(os.path.join(root, ".claude-plugin"))
         os.makedirs(os.path.join(root, "scripts"))
         with open(os.path.join(root, ".claude-plugin", "plugin.json"), "w") as fh:
-            json.dump({"name": "claude-speak", "version": version}, fh)
+            json.dump({"name": "read-aloud", "version": version}, fh)
         return os.path.join(root, "scripts")
 
     def point_at(self, scripts):
@@ -325,7 +325,7 @@ class OnePlaceForTheUnit(unittest.TestCase):
     """The unit text used to live in install.sh alone; the CLI needs it too."""
 
     def test_no_unit_heredoc_outside_csheal(self):
-        for rel in ("bin/claude-speak", "scripts/install.sh"):
+        for rel in ("bin/read-aloud", "scripts/install.sh"):
             with self.subTest(rel):
                 with open(os.path.join(ROOT, rel)) as fh:
                     self.assertIsNone(re.search(r"^\[Unit\]", fh.read(), re.M),

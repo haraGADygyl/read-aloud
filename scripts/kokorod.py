@@ -283,7 +283,7 @@ def main():
     server.bind(cspaths.SOCK)
     os.chmod(cspaths.SOCK, 0o600)
     server.listen(8)
-    print("claude-speak daemon ready on %s" % cspaths.SOCK, flush=True)
+    print("read-aloud daemon ready on %s" % cspaths.SOCK, flush=True)
 
     try:
         while True:

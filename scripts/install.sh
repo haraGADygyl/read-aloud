@@ -5,8 +5,8 @@ set -uo pipefail
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$(cd "$SCRIPTS/../bin" 2>/dev/null && pwd || true)"
-DATA="${CLAUDE_SPEAK_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/claude-speak}"
-CFG="${CLAUDE_SPEAK_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/claude-speak/config.json}"
+DATA="${READ_ALOUD_HOME:-${CLAUDE_SPEAK_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/read-aloud}}"
+CFG="${READ_ALOUD_CONFIG:-${CLAUDE_SPEAK_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/read-aloud/config.json}}"
 MODELS="$DATA/models"
 VENV="$DATA/venv"
 RELEASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
@@ -19,6 +19,20 @@ RELEASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-fil
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m warn:\033[0m %s\n' "$*"; }
 die()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# ---------------------------------------------------------------- rename ----
+# This was claude-speak until 0.10.0. Carry its venv, model, config and held
+# replies over — nobody should download 338 MB again for a rename — and swap
+# its daemon unit and PATH link for read-aloud's. Before anything below
+# creates $DATA, which would leave the old directory nowhere to move to.
+python3 "$SCRIPTS/csmigrate.py"
+if ! cs_redirected; then
+  cs_unit_migrate "$HOME/.config/systemd/user/claude-speak.service" \
+    "$HOME/.config/systemd/user/read-aloud.service" "$VENV/bin/python" "$SCRIPTS"
+  rc=$?; [[ $rc == 10 || $rc == 13 ]] && say "Replaced the claude-speak daemon unit"
+  cs_link_retire "$HOME/.local/bin"
+  [[ $? == 11 ]] && say "Removed the claude-speak command — it is read-aloud now"
+fi
 
 # ---------------------------------------------------------------- prereqs ---
 # Deliberately short. jq is gone (csconfig.py does the JSON), and espeak-ng is
@@ -122,30 +136,30 @@ python3 "$SCRIPTS/csconfig.py" config ensure \
   || warn "could not write $CFG"
 
 # ------------------------------------------------------------------ link ----
-# Nothing else puts claude-speak on PATH, so a fresh install had a CLI you
+# Nothing else puts read-aloud on PATH, so a fresh install had a CLI you
 # could not type. The plugin directory is versioned and moves on every update,
 # hence a symlink rather than a copy.
 BINDIR="$HOME/.local/bin"
-LINK="$BINDIR/claude-speak"
+LINK="$BINDIR/read-aloud"
 cs_record_root "$DATA/plugin-root" "$SCRIPTS" \
   || warn "could not record the plugin location in $DATA"
 
-if [[ ! -x "$BIN/claude-speak" ]]; then
-  warn "cannot find bin/claude-speak next to $SCRIPTS — skipping the PATH link"
+if [[ ! -x "$BIN/read-aloud" ]]; then
+  warn "cannot find bin/read-aloud next to $SCRIPTS — skipping the PATH link"
 else
   cs_link_sync "$BINDIR" "$SCRIPTS"
   case $? in
-    0)  say "claude-speak already linked into $BINDIR" ;;
-    10) say "Linked claude-speak into $BINDIR" ;;
+    0)  say "read-aloud already linked into $BINDIR" ;;
+    10) say "Linked read-aloud into $BINDIR" ;;
     # An earlier release lives at the old target: plugin directories are
     # version-stamped, so every update strands the link on the copy before it.
     11) say "Re-pointed $LINK at this version" ;;
     12) warn "$LINK exists and points elsewhere — leaving it alone" ;;
-    *)  warn "could not link into $BINDIR — use /claude-speak:speak in Claude Code instead" ;;
+    *)  warn "could not link into $BINDIR — use /read-aloud:speak in Claude Code instead" ;;
   esac
   case ":$PATH:" in
     *":$BINDIR:"*) ;;
-    *) warn "$BINDIR is not on your PATH — add it, or use /claude-speak:speak in Claude Code" ;;
+    *) warn "$BINDIR is not on your PATH — add it, or use /read-aloud:speak in Claude Code" ;;
   esac
 fi
 
@@ -154,11 +168,11 @@ fi
 # on first use and stays up for the rest of the login session.
 if [[ "${1:-}" != "--no-service" ]] && command -v systemctl >/dev/null \
    && systemctl --user show-environment >/dev/null 2>&1; then
-  UNIT="$HOME/.config/systemd/user/claude-speak.service"
+  UNIT="$HOME/.config/systemd/user/read-aloud.service"
   cs_unit_write "$UNIT" "$VENV/bin/python" "$SCRIPTS" \
     || die "could not write $UNIT"
   systemctl --user daemon-reload
-  systemctl --user enable --now claude-speak.service >/dev/null 2>&1 \
+  systemctl --user enable --now read-aloud.service >/dev/null 2>&1 \
     && say "Daemon enabled (systemd user service)" \
     || warn "could not enable the systemd service; the daemon will start on demand"
 else
@@ -168,7 +182,7 @@ fi
 # ------------------------------------------------------------------ done ----
 say "Testing"
 python3 "$SCRIPTS/say.py" --voice "$(python3 "$SCRIPTS/csconfig.py" config get voice)" \
-  "Claude speak is installed. This is the voice your replies will use when you play them."
+  "Read aloud is installed. This is the voice your replies will use when you play them."
 
 cat <<'DONE'
 
@@ -177,18 +191,18 @@ Done. Useful commands:
 Replies are HELD by default -- you get a ding and a notification, and
 hear them when you ask:
 
-  claude-speak play         read this terminal's replies, oldest first
-  claude-speak play all     read every project's
-  claude-speak hold off     or have replies spoken automatically
+  read-aloud play         read this terminal's replies, oldest first
+  read-aloud play all     read every project's
+  read-aloud hold off     or have replies spoken automatically
 
 Even with auto-speak on, nothing is spoken while your microphone is in
-use, so a call is never interrupted (claude-speak guard test).
+use, so a call is never interrupted (read-aloud guard test).
 
-  claude-speak audition     hear the 10 best English voices, then pick one
-  claude-speak voice bm_george
-  claude-speak speed 1.2
+  read-aloud audition     hear the 10 best English voices, then pick one
+  read-aloud voice bm_george
+  read-aloud speed 1.2
 
-The same controls exist in Claude Code as /claude-speak:speak (for
-example "/claude-speak:speak play"). Restart Claude Code once so the
+The same controls exist in Claude Code as /read-aloud:speak (for
+example "/read-aloud:speak play"). Restart Claude Code once so the
 Stop hook loads.
 DONE

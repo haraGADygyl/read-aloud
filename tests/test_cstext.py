@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import cstext  # noqa: E402
 
 CLI = os.path.join(ROOT, "scripts", "cstext.py")
-BIN = os.path.join(ROOT, "bin", "claude-speak")
+BIN = os.path.join(ROOT, "bin", "read-aloud")
 
 
 def cfg(**over):
@@ -287,14 +287,14 @@ class LoadConfig(unittest.TestCase):
 
 
 class FilterCLI(unittest.TestCase):
-    """scripts/cstext.py as the filter `claude-speak read` shells out to."""
+    """scripts/cstext.py as the filter `read-aloud read` shells out to."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         # An isolated config, so a developer's own settings can't sway a test.
         self.env = dict(os.environ,
-                        CLAUDE_SPEAK_HOME=self.dir,
-                        CLAUDE_SPEAK_CONFIG=os.path.join(self.dir, "config.json"))
+                        READ_ALOUD_HOME=self.dir,
+                        READ_ALOUD_CONFIG=os.path.join(self.dir, "config.json"))
 
     def run_cli(self, *args, **kw):
         return subprocess.run([sys.executable, CLI] + list(args),
@@ -327,13 +327,13 @@ class FilterCLI(unittest.TestCase):
 
 @unittest.skipUnless(os.path.exists("/bin/bash"), "needs bash")
 class ReadCommand(unittest.TestCase):
-    """`claude-speak read` — only the paths that stop before speaking."""
+    """`read-aloud read` — only the paths that stop before speaking."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         self.env = dict(os.environ,
-                        CLAUDE_SPEAK_HOME=self.dir,
-                        CLAUDE_SPEAK_CONFIG=os.path.join(self.dir, "config.json"))
+                        READ_ALOUD_HOME=self.dir,
+                        READ_ALOUD_CONFIG=os.path.join(self.dir, "config.json"))
 
     def read(self, arg):
         return subprocess.run(["/bin/bash", BIN, "read", arg],

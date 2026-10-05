@@ -133,7 +133,7 @@ class WavContainer(unittest.TestCase):
 
 
 class EncoderSelection(unittest.TestCase):
-    """`claude-speak save` — which encoder, and how it is fed."""
+    """`read-aloud save` — which encoder, and how it is fed."""
 
     def setUp(self):
         self.real_which = csaudio.shutil.which

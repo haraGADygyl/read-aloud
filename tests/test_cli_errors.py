@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Tests for what bin/claude-speak says when you get the command wrong.
+"""Tests for what bin/read-aloud says when you get the command wrong.
 
     python3 -m unittest discover tests
 
 A mistyped command used to reach bash's own ${2:?} error —
 
-    ./bin/claude-speak: line 183: 2: usage: claude-speak same queue|interrupt
+    ./bin/read-aloud: line 183: 2: usage: read-aloud same queue|interrupt
 
 — which names a file and a line number the reader does not have open, buries
 the usage behind them, and exits 1 where every other bad argument exits 2.
 
-Every run here redirects HOME, XDG_RUNTIME_DIR and both CLAUDE_SPEAK_ vars at a
+Every run here redirects HOME, XDG_RUNTIME_DIR and both READ_ALOUD_ vars at a
 temporary directory: the CLI repairs the PATH link and the systemd unit on
 every invocation, and the socket it reaches would be the real daemon.
 """
@@ -22,7 +22,7 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BIN = os.path.join(ROOT, "bin", "claude-speak")
+BIN = os.path.join(ROOT, "bin", "read-aloud")
 
 
 class CLI(unittest.TestCase):
@@ -32,8 +32,8 @@ class CLI(unittest.TestCase):
     def run_cli(self, *args):
         env = dict(os.environ,
                    HOME=self.dir, XDG_RUNTIME_DIR=self.dir,
-                   CLAUDE_SPEAK_HOME=self.dir,
-                   CLAUDE_SPEAK_CONFIG=os.path.join(self.dir, "config.json"))
+                   READ_ALOUD_HOME=self.dir,
+                   READ_ALOUD_CONFIG=os.path.join(self.dir, "config.json"))
         return subprocess.run([BIN] + list(args), capture_output=True,
                               text=True, env=env, cwd=self.dir)
 
@@ -52,15 +52,15 @@ class MissingArgument(CLI):
         for cmd, expect in self.CASES:
             with self.subTest(cmd=cmd):
                 r = self.run_cli(cmd)
-                self.assertTrue(r.stdout.startswith("usage: claude-speak " + expect),
+                self.assertTrue(r.stdout.startswith("usage: read-aloud " + expect),
                                 "got: %r" % (r.stdout or r.stderr,))
 
     def test_no_script_path_or_line_number_leaks(self):
         for cmd, _ in self.CASES:
             with self.subTest(cmd=cmd):
                 out = self.run_cli(cmd).stdout + self.run_cli(cmd).stderr
-                self.assertNotIn("claude-speak: line", out)
-                self.assertNotRegex(out, r"^\S*/bin/claude-speak")
+                self.assertNotIn("read-aloud: line", out)
+                self.assertNotRegex(out, r"^\S*/bin/read-aloud")
 
     def test_it_exits_two_like_every_other_bad_argument(self):
         for cmd, _ in self.CASES:
@@ -86,7 +86,7 @@ class UnknownCommand(CLI):
         for typo, want in [("spedd", "speed"), ("statsu", "status"),
                            ("instal", "install"), ("audtion", "audition")]:
             with self.subTest(typo=typo):
-                self.assertIn("did you mean: claude-speak " + want,
+                self.assertIn("did you mean: read-aloud " + want,
                               self.run_cli(typo).stdout)
 
     def test_nonsense_gets_no_suggestion(self):
@@ -94,7 +94,7 @@ class UnknownCommand(CLI):
         self.assertNotIn("did you mean", self.run_cli("xyzzy").stdout)
 
     def test_the_message_goes_to_stdout(self):
-        # /claude-speak:speak reports what the binary printed; on stderr only,
+        # /read-aloud:speak reports what the binary printed; on stderr only,
         # the user would see an empty reply.
         r = self.run_cli("nope")
         self.assertIn("no such command", r.stdout)

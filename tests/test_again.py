@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for `claude-speak again` — reading the last reply back.
+"""Tests for `read-aloud again` — reading the last reply back.
 
     python3 -m unittest discover tests
 
@@ -36,8 +36,8 @@ class Base(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.cfg = os.path.join(self.dir, "config.json")
         self.env = dict(os.environ,
-                        CLAUDE_SPEAK_HOME=self.dir,
-                        CLAUDE_SPEAK_CONFIG=self.cfg)
+                        READ_ALOUD_HOME=self.dir,
+                        READ_ALOUD_CONFIG=self.cfg)
         self.write_cfg({})
 
     def write_cfg(self, extra):
@@ -133,7 +133,7 @@ class Asking(Base):
 
 class PerSession(Base):
     """Several sessions open in one directory share the project copy, so the
-    project copy is whichever finished last — /claude-speak:speak again once
+    project copy is whichever finished last — /read-aloud:speak again once
     read a neighbouring terminal's reply instead of its own."""
 
     def session(self, sid):
@@ -171,7 +171,7 @@ class PerSession(Base):
 
 
 class CommandReplies(Base):
-    """Claude's one-line report of a /claude-speak:speak run — "Stopped
+    """Claude's one-line report of a /read-aloud:speak run — "Stopped
     speaking." — is not a reply worth hearing, and must not become the one
     `again` repeats."""
 
@@ -223,10 +223,10 @@ class CommandReplies(Base):
 
 
 class FromTheSlashCommand(Base):
-    """bin/claude-speak --session, as /claude-speak:speak runs it. Only the
+    """bin/read-aloud --session, as /read-aloud:speak runs it. Only the
     paths that play nothing are driven here."""
 
-    BIN = os.path.join(ROOT, "bin", "claude-speak")
+    BIN = os.path.join(ROOT, "bin", "read-aloud")
 
     def cli(self, *args):
         env = dict(self.env, HOME=self.dir, XDG_RUNTIME_DIR=self.dir)

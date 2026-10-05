@@ -1,4 +1,4 @@
-"""Shared locations for claude-speak.
+"""Shared locations for read-aloud.
 
 Runtime state deliberately lives outside the plugin directory: plugin updates
 replace that directory, and a 338 MB model download should survive them.
@@ -13,9 +13,12 @@ HOME = os.path.expanduser("~")
 _XDG_DATA = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share")
 _XDG_CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config")
 
-DATA = os.environ.get("CLAUDE_SPEAK_HOME") or os.path.join(_XDG_DATA, "claude-speak")
-CONFIG = os.environ.get("CLAUDE_SPEAK_CONFIG") or os.path.join(
-    _XDG_CONFIG, "claude-speak", "config.json")
+# The CLAUDE_SPEAK_ spellings are from before the rename (see csmigrate.py),
+# still honoured so a redirect someone already relies on keeps redirecting.
+DATA = (os.environ.get("READ_ALOUD_HOME") or os.environ.get("CLAUDE_SPEAK_HOME")
+        or os.path.join(_XDG_DATA, "read-aloud"))
+CONFIG = (os.environ.get("READ_ALOUD_CONFIG") or os.environ.get("CLAUDE_SPEAK_CONFIG")
+          or os.path.join(_XDG_CONFIG, "read-aloud", "config.json"))
 
 VENV_PY = os.path.join(DATA, "venv", "bin", "python")
 MODEL = os.path.join(DATA, "models", "kokoro-v1.0.onnx")
@@ -34,7 +37,7 @@ ROOT_POINTER = os.path.join(DATA, "plugin-root")
 # A socket under XDG_RUNTIME_DIR is cleaned up on logout; fall back for systems
 # that do not set it (some containers, some BSD-ish setups).
 _RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or DATA
-SOCK = os.path.join(_RUNTIME, "claude-speak.sock")
+SOCK = os.path.join(_RUNTIME, "read-aloud.sock")
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 DAEMON = os.path.join(SCRIPTS, "kokorod.py")
@@ -82,13 +85,13 @@ def session_file(session):
 
     The project copy above is shared by every session open in that directory,
     so with two terminals in one repo it holds whichever finished last.
-    /claude-speak:speak knows its own session id and asks for this instead.
+    /read-aloud:speak knows its own session id and asks for this instead.
     """
     return os.path.join(SESSIONS, _safe(session) + ".txt")
 
 
 def mute_file(session):
-    """Marks the next reply from a session as the answer to a claude-speak
+    """Marks the next reply from a session as the answer to a read-aloud
     command — "Stopped speaking." — which is neither spoken nor kept."""
     return os.path.join(SESSIONS, _safe(session) + ".mute")
 
