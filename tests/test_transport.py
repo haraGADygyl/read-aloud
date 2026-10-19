@@ -141,6 +141,47 @@ class Loopback(Base):
         self.assertIsNone(say.send({"cmd": "status"}, start_daemon=False))
 
 
+class Spawn(unittest.TestCase):
+    """Starting the daemon, the hook's say.py and the ding in the background."""
+
+    def test_it_really_starts_something(self):
+        # Unmocked: on Windows this goes through the job-breakaway attempt
+        # and, where the job refuses, the fallback.
+        proc = cspaths.spawn([sys.executable, "-c", "raise SystemExit(7)"])
+        self.assertEqual(proc.wait(timeout=30), 7)
+
+    @unittest.skipIf(os.name == "nt", "POSIX only")
+    def test_posix_gets_a_session_of_its_own(self):
+        with mock.patch.object(cspaths.subprocess, "Popen") as popen:
+            cspaths.spawn(["x"])
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        self.assertEqual(cspaths.NO_WINDOW, 0)
+
+    @unittest.skipUnless(os.name == "nt", "Windows only")
+    def test_windows_opens_no_window_and_leaves_the_job(self):
+        sp = cspaths.subprocess
+        with mock.patch.object(sp, "Popen") as popen:
+            cspaths.spawn(["x"])
+        flags = popen.call_args.kwargs["creationflags"]
+        for flag in (sp.CREATE_NO_WINDOW, sp.CREATE_NEW_PROCESS_GROUP,
+                     sp.CREATE_BREAKAWAY_FROM_JOB):
+            self.assertTrue(flags & flag, hex(flag))
+
+    @unittest.skipUnless(os.name == "nt", "Windows only")
+    def test_windows_stays_in_a_job_that_forbids_leaving(self):
+        sp = cspaths.subprocess
+        with mock.patch.object(sp, "Popen",
+                               side_effect=[PermissionError(5, "denied"), "ok"]) as popen:
+            self.assertEqual(cspaths.spawn(["x"]), "ok")
+        self.assertFalse(popen.call_args.kwargs["creationflags"]
+                         & sp.CREATE_BREAKAWAY_FROM_JOB)
+
+    def test_venv_python_is_where_this_platform_puts_it(self):
+        want = (os.path.join("Scripts", "python.exe") if os.name == "nt"
+                else os.path.join("bin", "python"))
+        self.assertTrue(cspaths.VENV_PY.endswith(want), cspaths.VENV_PY)
+
+
 @unittest.skipUnless(hasattr(socket, "AF_UNIX"), "no unix sockets here")
 class UnixSocket(Base):
     unix = True

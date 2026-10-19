@@ -8,6 +8,7 @@ import json
 import os
 import re
 import socket
+import subprocess
 
 HOME = os.path.expanduser("~")
 
@@ -21,7 +22,8 @@ DATA = (os.environ.get("READ_ALOUD_HOME") or os.environ.get("CLAUDE_SPEAK_HOME")
 CONFIG = (os.environ.get("READ_ALOUD_CONFIG") or os.environ.get("CLAUDE_SPEAK_CONFIG")
           or os.path.join(_XDG_CONFIG, "read-aloud", "config.json"))
 
-VENV_PY = os.path.join(DATA, "venv", "bin", "python")
+VENV_PY = (os.path.join(DATA, "venv", "Scripts", "python.exe") if os.name == "nt"
+           else os.path.join(DATA, "venv", "bin", "python"))
 MODEL = os.path.join(DATA, "models", "kokoro-v1.0.onnx")
 VOICES = os.path.join(DATA, "models", "voices-v1.0.bin")
 HELD = os.path.join(DATA, "held.jsonl")
@@ -47,6 +49,29 @@ SOCK = os.path.join(_RUNTIME, "read-aloud.sock")
 # that cannot read it cannot be heard.
 UNIX_SOCKETS = hasattr(socket, "AF_UNIX")
 ENDPOINT = os.path.join(DATA, "daemon.port")
+
+# Passed to every helper process. On Windows a console program started from a
+# process with no visible console opens a window of its own — one per sentence,
+# for a player. Elsewhere it is 0, the only value Popen accepts there.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def spawn(args, **kw):
+    """Start a process that outlives this one and shows nothing.
+
+    POSIX: a new session, so the terminal's hangup does not reach it. Windows:
+    no console window, a process group of its own so a Ctrl+C in the terminal
+    is not its, and out of the parent's job where the job allows it — a job
+    that kills its members on close would take the daemon down with the hook.
+    """
+    if os.name != "nt":
+        return subprocess.Popen(args, start_new_session=True, **kw)
+    flags = NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    try:
+        return subprocess.Popen(
+            args, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kw)
+    except OSError:
+        return subprocess.Popen(args, creationflags=flags, **kw)   # job forbids it
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 DAEMON = os.path.join(SCRIPTS, "kokorod.py")

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Getting PCM to a speaker, or to a file, on whatever the machine happens to have.
 
-Two shapes, because macOS has neither of the usual players:
+Two shapes, because macOS and Windows have none of the usual players:
 
   streaming — paplay, aplay, ffplay, sox read raw PCM on stdin, so one
               process can play a whole reply as it is synthesized
-  file      — afplay, which ships with macOS, only plays files. Each chunk
+  file      — afplay, which ships with macOS, only plays files, and so does
+              winsound, which ships with every Windows Python. Each chunk
               becomes a short wav played to completion. Still chunk by
               chunk, just not down one long pipe
 
@@ -20,8 +21,12 @@ import io
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import wave
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cspaths  # noqa: E402
 
 
 def stream_cmd(rate):
@@ -47,9 +52,22 @@ def stream_cmd(rate):
     return None
 
 
+WINDOWS = os.name == "nt"
+
+# A process rather than a call in this one, so stop() can kill it like afplay;
+# killing it cuts the sound off at once. SND_NODEFAULT: a file that will not
+# play stays silent rather than sounding the system's error chime.
+WINSOUND = ("import sys, winsound; winsound.PlaySound(sys.argv[1], "
+            "winsound.SND_FILENAME | winsound.SND_NODEFAULT)")
+
+
 def file_player():
-    """A player that takes a path instead of a pipe, or None."""
-    return "afplay" if shutil.which("afplay") else None
+    """A command that plays the wav path appended to it, or None."""
+    if shutil.which("afplay"):
+        return ["afplay"]
+    if WINDOWS:
+        return [sys.executable, "-c", WINSOUND]
+    return None
 
 
 def available():
@@ -92,15 +110,15 @@ def play_blocking(pcm, rate):
     cmd = stream_cmd(rate)
     if cmd is not None:
         subprocess.run(cmd, input=pcm, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL)
+                       stderr=subprocess.DEVNULL, creationflags=cspaths.NO_WINDOW)
         return
     player = file_player()
     if player is None:
         raise RuntimeError(NO_PLAYER)
     path = write_temp_wav(pcm, rate)
     try:
-        subprocess.run([player, path], stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL)
+        subprocess.run(player + [path], stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, creationflags=cspaths.NO_WINDOW)
     finally:
         try:
             os.unlink(path)
@@ -174,7 +192,8 @@ class Recorder:
         # reads is a deadlock waiting for a verbose build.
         self.errlog = tempfile.TemporaryFile()
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                     stdout=subprocess.DEVNULL, stderr=self.errlog)
+                                     stdout=subprocess.DEVNULL, stderr=self.errlog,
+                                     creationflags=cspaths.NO_WINDOW)
 
     @property
     def seconds(self):

@@ -16,6 +16,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import csaudio  # noqa: E402
 import cspaths  # noqa: E402
 import csmigrate  # noqa: E402
 from cstext import clean, load_config  # noqa: E402
@@ -112,6 +113,8 @@ DING_CANDIDATES = [
     "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga",
     "/usr/share/sounds/freedesktop/stereo/bell.oga",
     "/System/Library/Sounds/Tink.aiff",
+    os.path.join(os.environ.get("SystemRoot") or r"C:\Windows",
+                 "Media", "Windows Notify Messaging.wav"),
 ]
 
 
@@ -127,8 +130,8 @@ def ding(cfg):
 
     if shutil.which("paplay"):
         cmd = ["paplay", path]
-    elif shutil.which("afplay"):
-        cmd = ["afplay", path]
+    elif csaudio.file_player():             # afplay, or winsound (wav only)
+        cmd = csaudio.file_player() + [path]
     elif shutil.which("ffplay"):
         cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", path]
     elif shutil.which("aplay"):
@@ -136,8 +139,7 @@ def ding(cfg):
     else:
         return
     try:
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
+        cspaths.spawn(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         pass
 
@@ -289,7 +291,7 @@ def speak(text, cfg):
             # The daemon streams chunk by chunk. Session identity lets it
             # keep this terminal's replies in order and queue other terminals
             # behind us.
-            subprocess.Popen(
+            cspaths.spawn(
                 [sys.executable, os.path.join(cspaths.SCRIPTS, "say.py"),
                  "--voice", str(cfg["voice"]),
                  "--speed", str(cfg["speed"]),
@@ -298,8 +300,7 @@ def speak(text, cfg):
                  "--mode", str(cfg["multiSession"]),
                  "--same", str(cfg["sameSession"]),
                  text],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True)
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
         engine = "say" if platform.system() == "Darwin" else "spd-say"
 

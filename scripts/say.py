@@ -70,9 +70,8 @@ def ensure_daemon(wait=60.0):
         try:
             os.makedirs(cspaths.DATA, exist_ok=True)
             with open(cspaths.LOG, "ab") as log:
-                subprocess.Popen([cspaths.VENV_PY, cspaths.DAEMON],
-                                 stdout=log, stderr=log, stdin=subprocess.DEVNULL,
-                                 start_new_session=True)
+                cspaths.spawn([cspaths.VENV_PY, cspaths.DAEMON],
+                              stdout=log, stderr=log, stdin=subprocess.DEVNULL)
         except OSError:
             return None
 

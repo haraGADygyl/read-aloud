@@ -166,8 +166,9 @@ class Speaker:
         """One chunk through a file-only player. Blocks until it has played."""
         path = csaudio.write_temp_wav(pcm, rate)
         try:
-            proc = subprocess.Popen([player, path], stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL)
+            proc = subprocess.Popen(player + [path], stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL,
+                                    creationflags=cspaths.NO_WINDOW)
             if not self._adopt(proc):
                 return False
             proc.wait()
@@ -183,7 +184,7 @@ class Speaker:
         text = self._announce(job) + job.text
         self.last_label = job.label
         # A streaming player takes the whole reply down one pipe; a file-only
-        # one (macOS afplay) takes a chunk at a time. Decided per reply, since
+        # one (afplay, winsound) takes a chunk at a time. Decided per reply, since
         # the rate is not known until the first chunk is synthesized.
         stream, file_player = None, csaudio.file_player()
         try:
@@ -217,7 +218,8 @@ class Speaker:
                     if stream is None:
                         stream = subprocess.Popen(
                             cmd, stdin=subprocess.PIPE,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            creationflags=cspaths.NO_WINDOW)
                         if not self._adopt(stream):
                             return
                     try:

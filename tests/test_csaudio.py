@@ -12,6 +12,7 @@ pipe, and that route has to be testable without a Mac.
 
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -40,12 +41,15 @@ class PlayerSelection(unittest.TestCase):
 
     def setUp(self):
         self.real_which = csaudio.shutil.which
+        self.real_windows = csaudio.WINDOWS
 
     def tearDown(self):
         csaudio.shutil.which = self.real_which
+        csaudio.WINDOWS = self.real_windows
 
-    def only(self, *tools):
+    def only(self, *tools, windows=False):
         csaudio.shutil.which = FakeWhich(*tools)
+        csaudio.WINDOWS = windows
 
     def test_pipewire_preferred(self):
         self.only("paplay", "aplay", "ffplay")
@@ -68,8 +72,33 @@ class PlayerSelection(unittest.TestCase):
         # the caller has to take the file route.
         self.only("afplay")
         self.assertIsNone(csaudio.stream_cmd(RATE))
-        self.assertEqual(csaudio.file_player(), "afplay")
+        self.assertEqual(csaudio.file_player(), ["afplay"])
         self.assertTrue(csaudio.available())
+
+    def test_windows(self):
+        # A stock Windows box has no player on PATH, but every Python there
+        # has winsound — run by the interpreter already running, which is the
+        # venv's in the daemon and whatever python3 is in the hook.
+        self.only(windows=True)
+        self.assertIsNone(csaudio.stream_cmd(RATE))
+        self.assertEqual(csaudio.file_player()[:2], [sys.executable, "-c"])
+        self.assertTrue(csaudio.available())
+
+    def test_windows_still_prefers_a_streaming_player(self):
+        # ffplay on PATH plays a reply down one pipe, without the gap a
+        # process per sentence leaves.
+        self.only("ffplay", windows=True)
+        self.assertEqual(csaudio.stream_cmd(RATE)[0], "ffplay")
+
+    @unittest.skipUnless(os.name == "nt", "winsound is Windows-only")
+    def test_winsound_player_runs(self):
+        # A path that does not exist: winsound is imported and called with
+        # these flags for real, and SND_NODEFAULT keeps the failure silent.
+        out = subprocess.run(csaudio.file_player() + [os.path.join(
+                                 tempfile.gettempdir(), "no-such-read-aloud.wav")],
+                             capture_output=True, text=True,
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertIn("Failed to play sound", out.stderr)
 
     def test_afplay_never_used_as_a_pipe(self):
         # It cannot read stdin. Treating it as a streaming player would look

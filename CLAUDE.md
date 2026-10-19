@@ -29,7 +29,7 @@ On Windows, `core.autocrlf=true` checks the shell scripts out with CRLF and bash
 | Runs under | Files | May import |
 | --- | --- | --- |
 | System `python3` | `speak-hook.py`, `say.py`, `cstext.py`, `cspaths.py`, `csconfig.py`, `csaudio.py`, `csmigrate.py` | **stdlib only** |
-| Venv `$DATA/venv/bin/python` | `kokorod.py`, `audition.py`, `csrender.py` | `numpy`, `kokoro_onnx` |
+| Venv `$DATA/venv/bin/python` (`venv\Scripts\python.exe` on Windows) | `kokorod.py`, `audition.py`, `csrender.py` | `numpy`, `kokoro_onnx` |
 
 The Stop hook runs under whatever `python3` Claude Code happens to have and cannot see the venv. A third-party import anywhere in the first row breaks speech for every user — silently, for the reason below.
 
@@ -40,8 +40,11 @@ Stop hook (hooks/hooks.json)
   → speak-hook.py    payload on stdin → cstext.clean() → hold or speak
   → say.py           unix-socket client, returns in ~30 ms
   → kokorod.py       warm model, sentence-chunked synthesis, streams PCM
-  → paplay / pw-play / aplay / ffplay / sox — or afplay a wav at a time (macOS)
+  → paplay / pw-play / aplay / ffplay / sox — or a wav at a time through
+    afplay (macOS) or a python -c winsound process (Windows)
 ```
+
+On Windows every background process goes through `cspaths.spawn` and every player gets `cspaths.NO_WINDOW`; a console program started without them opens a window per sentence. A venv's `python.exe` there is a launcher that runs the real interpreter as a child, so the daemon and each player show up as two processes — killing the outer one takes the inner with it.
 
 `speak-hook.py` wraps `main()` in a bare `except: pass` and always exits 0, because a broken hook must never break a Claude Code session. **Every failure is therefore invisible.** Debug by driving it directly:
 
