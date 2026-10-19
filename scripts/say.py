@@ -5,6 +5,7 @@ can call it with whatever python3 is on the system.
     say.py "some text"              speak it
     say.py < notes.txt              speak a pipe or redirect
     say.py --stop                   cancel current speech
+    say.py --quit                   stop, and shut the daemon down
     say.py --status                 what is speaking / waiting
     say.py --voice af_bella "…"     override voice
 """
@@ -110,6 +111,9 @@ def main():
     if args and args[0] == "--stop":
         send({"cmd": "stop"}, start_daemon=False)   # never boot it just to hush it
         sys.exit(0)
+
+    if args and args[0] == "--quit":
+        sys.exit(0 if send({"cmd": "quit"}, start_daemon=False) else 1)
 
     if args and args[0] == "--status":
         # Checking on the daemon must never be the thing that starts it.

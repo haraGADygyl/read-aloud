@@ -51,7 +51,6 @@ SCRIPTS="$(cd "$HERE/../scripts" && pwd)" || {
 DATA="${READ_ALOUD_HOME:-${CLAUDE_SPEAK_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/read-aloud}}"
 CFG="${READ_ALOUD_CONFIG:-${CLAUDE_SPEAK_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/read-aloud/config.json}}"
 HELD="$DATA/held.jsonl"
-VENV_PY="$DATA/venv/bin/python"
 SAY=(python3 "$SCRIPTS/say.py")
 
 # All JSON goes through csconfig.py rather than jq. python3 is required by the
@@ -63,6 +62,11 @@ CS=(python3 "$SCRIPTS/csconfig.py")
 . "$SCRIPTS/csheal.sh"
 UNIT="$HOME/.config/systemd/user/read-aloud.service"
 POINTER="$DATA/plugin-root"
+VENV_PY="$(cs_venv_py "$DATA/venv")"
+
+# Python on Windows reads and writes in the ANSI code page, which has no → or
+# — and turns a reply passed through a pipe into mojibake. UTF-8 mode instead.
+WINDOWS=""; cs_windows && WINDOWS=1 && export PYTHONUTF8=1
 
 wait_for_daemon() {
   for _ in {1..10}; do
@@ -100,6 +104,8 @@ heal() {
   # only on the run that actually restarted it.
   [[ "$rc" == 13 ]] && wait_for_daemon
 
+  # Windows has read-aloud.cmd, which reads the pointer itself — see csheal.sh.
+  [[ -n "$WINDOWS" ]] && return 0
   cs_link_sync "$HOME/.local/bin" "$scripts"; rc=$?
   [[ "$rc" == 11 ]] && echo "read-aloud: $HOME/.local/bin/read-aloud re-pointed at the installed version"
   return 0
@@ -289,6 +295,12 @@ case "${1:-status}" in
            echo "meeting guard: off — replies may be spoken during calls" ;;
       test|"")
         if [[ "$(get meetingGuard)" != "true" ]]; then echo "meeting guard: off"; exit 0; fi
+        # It asks PulseAudio/PipeWire, which Windows does not have. "idle"
+        # would be a promise it cannot keep.
+        if [[ -n "$WINDOWS" ]]; then
+          echo "meeting guard: on, but it cannot see the microphone on Windows yet — replies may be spoken during calls"
+          exit 0
+        fi
         apps=$(pactl list source-outputs 2>/dev/null \
                | grep -oP 'application\.name = "\K[^"]*' | sort -u | paste -sd', ')
         if [[ -n "$apps" ]]; then
@@ -309,7 +321,13 @@ case "${1:-status}" in
       *)
         [[ -f "$2" ]] || { echo "no such file: $2"; exit 2; }
         set_key holdSound "\"$2\""; echo "hold sound: $2"
-        paplay "$2" 2>/dev/null || aplay -q "$2" 2>/dev/null
+        if [[ -n "$WINDOWS" ]]; then
+          [[ "${2,,}" == *.wav ]] || echo "note: Windows can only play .wav files here"
+          python3 -c 'import sys, winsound; winsound.PlaySound(sys.argv[1], winsound.SND_FILENAME | winsound.SND_NODEFAULT)' \
+            "$2" 2>/dev/null
+        else
+          paplay "$2" 2>/dev/null || aplay -q "$2" 2>/dev/null
+        fi
         ;;
     esac
     ;;
@@ -363,11 +381,13 @@ case "${1:-status}" in
 
   voices)
     kokoro_ready || { echo "run 'read-aloud install' first"; exit 1; }
+    # The directory goes in as an argument, not spliced into the code: Git Bash
+    # turns /c/Users/... into C:/Users/... in an argument, never inside a string.
     "$VENV_PY" -c "
-import sys; sys.path.insert(0, '$SCRIPTS')
+import sys; sys.path.insert(0, sys.argv[1])
 import cspaths
 from kokoro_onnx import Kokoro
-print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" 2>/dev/null
+print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" "$SCRIPTS" 2>/dev/null
     echo
     echo "Prefixes: a=American b=British e=Spanish f=French h=Hindi i=Italian j=Japanese p=Portuguese z=Chinese"
     echo "          f=female   m=male"
@@ -455,6 +475,10 @@ print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" 2>
     if systemctl --user restart read-aloud.service 2>/dev/null; then
       echo "daemon restarted"
     else
+      # Asked first, which is all there is on Windows — Git Bash's pkill cannot
+      # see native processes. pkill still follows, for a daemon from before
+      # 0.11.0 that answers "quit" with "ok" and stays up.
+      "${SAY[@]}" --quit 2>/dev/null
       pkill -f "$SCRIPTS/kokorod.py" 2>/dev/null
       echo "daemon stopped; it will start again on the next reply"
     fi

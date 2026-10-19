@@ -30,6 +30,19 @@ cs_redirected() {
   [[ -n "${READ_ALOUD_HOME:-}${READ_ALOUD_CONFIG:-}${CLAUDE_SPEAK_HOME:-}${CLAUDE_SPEAK_CONFIG:-}" ]]
 }
 
+# Git Bash on Windows — MSYS2 underneath, and Cygwin is the same for our
+# purposes. There is no systemd, a symlink is a copy unless Developer Mode is
+# on, and a venv keeps its interpreter somewhere else.
+cs_windows() {
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; esac
+  return 1
+}
+
+cs_venv_py() {                       # <venv dir> -> its python on stdout
+  if cs_windows; then printf '%s/Scripts/python.exe' "$1"
+  else printf '%s/bin/python' "$1"; fi
+}
+
 cs_scripts_from_pointer() {          # <pointer file> -> scripts dir on stdout
   local pointer="$1" root
   [[ -s "$pointer" ]] || return 1
@@ -41,8 +54,51 @@ cs_scripts_from_pointer() {          # <pointer file> -> scripts dir on stdout
 }
 
 cs_record_root() {                   # <pointer file> <scripts dir>
+  local root="$2"
+  # In the hook's spelling, C:\Users\..., so the two writers agree byte for
+  # byte and Python can read what bash wrote.
+  cs_windows && root="$(cygpath -w "$root")"
   mkdir -p "$(dirname "$1")" 2>/dev/null || return 1
-  printf '%s\n' "$2" > "$1"
+  printf '%s\n' "$root" > "$1"
+}
+
+# ------------------------------------------------------ Command Prompt ----
+# Windows has no symlink to put on PATH, so it gets a read-aloud.cmd instead,
+# and one that names no plugin directory: it reads the pointer at run time and
+# hands over to that release's bin\read-aloud.cmd. An update moves the plugin
+# and the shim follows without being rewritten, which is why cs_link_sync is
+# not needed here.
+CS_SHIM_MARK="rem read-aloud shim, written by install.sh"
+
+cs_shim_text() {                     # <pointer file>
+  # cmd wants CRLF: a label can be missed when a goto scans LF-only lines.
+  sed 's/$/\r/' <<SHIMEOF
+@echo off
+$CS_SHIM_MARK
+rem It finds the plugin through the pointer the Stop hook keeps up to date.
+setlocal
+set "ROOT="
+set /p ROOT=<"$(cygpath -w "$1")" 2>nul
+if not defined ROOT (
+  echo read-aloud: cannot find the plugin. Restart Claude Code and let it finish one reply.
+  exit /b 1
+)
+call "%ROOT%\\..\\bin\\read-aloud.cmd" %*
+exit /b %ERRORLEVEL%
+SHIMEOF
+}
+
+cs_shim_sync() {                     # <bin dir> <pointer file>
+  local shim="$1/read-aloud.cmd"
+  if [[ -f "$shim" ]]; then
+    grep -qF "$CS_SHIM_MARK" "$shim" || return 12   # somebody else's
+    [[ "$(cs_shim_text "$2")" == "$(cat "$shim")" ]] && return 0
+    cs_shim_text "$2" > "$shim" || return 1
+    return 11
+  fi
+  mkdir -p "$1" 2>/dev/null || return 1
+  cs_shim_text "$2" > "$shim" || return 1
+  return 10
 }
 
 # One copy of the unit. It used to be written only by install.sh; the CLI

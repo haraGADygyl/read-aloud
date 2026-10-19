@@ -16,6 +16,12 @@ RELEASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-fil
 # shellcheck source=csheal.sh
 . "$SCRIPTS/csheal.sh"
 
+WINDOWS=""; cs_windows && WINDOWS=1
+VENV_PY="$(cs_venv_py "$VENV")"
+# Python on Windows reads and writes in the ANSI code page, which has no → or
+# —. UTF-8 mode for everything started from here.
+[[ -n "$WINDOWS" ]] && export PYTHONUTF8=1
+
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m warn:\033[0m %s\n' "$*"; }
 die()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -28,7 +34,7 @@ die()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 python3 "$SCRIPTS/csmigrate.py"
 if ! cs_redirected; then
   cs_unit_migrate "$HOME/.config/systemd/user/claude-speak.service" \
-    "$HOME/.config/systemd/user/read-aloud.service" "$VENV/bin/python" "$SCRIPTS"
+    "$HOME/.config/systemd/user/read-aloud.service" "$VENV_PY" "$SCRIPTS"
   rc=$?; [[ $rc == 10 || $rc == 13 ]] && say "Replaced the claude-speak daemon unit"
   cs_link_retire "$HOME/.local/bin"
   [[ $? == 11 ]] && say "Removed the claude-speak command — it is read-aloud now"
@@ -76,7 +82,8 @@ offer_install() {   # offer_install <what it is for> <package...>
   esac
 }
 
-if ! have_player; then
+# Windows always has one: winsound comes with every Windows Python.
+if [[ -z "$WINDOWS" ]] && ! have_player; then
   if [[ -n "$MACOS" ]]; then
     die "no audio player found, which should be impossible on macOS (afplay is built in)"
   fi
@@ -86,27 +93,37 @@ if ! have_player; then
   have_player || die "no audio player — install one of: pulseaudio-utils, pipewire-bin, alsa-utils, ffmpeg, sox"
 fi
 
-command -v notify-send >/dev/null || [[ -n "$MACOS" ]] \
+command -v notify-send >/dev/null || [[ -n "$MACOS$WINDOWS" ]] \
   || warn "notify-send not found — hold-mode notifications will be silent (sudo apt install libnotify-bin)"
+
+# The Stop hook is run as python3. On Windows that name can be the Microsoft
+# Store's stand-in, which prints an advert and exits — and the hook swallows
+# every failure, so replies would go silently unread. Better to say so now.
+if [[ -n "$WINDOWS" ]] && ! python3 -c 'import sys' >/dev/null 2>&1; then
+  die "python3 does not run here, and Claude Code runs the read-aloud hook as python3.
+       Install Python from python.org with the Python install manager (it provides
+       python3), or turn off the python3 alias under Settings > Apps > Advanced app
+       settings > App execution aliases once a real one is on PATH."
+fi
 
 PYBOOT=""
 for c in uv python3; do command -v "$c" >/dev/null && { PYBOOT="$c"; break; }; done
 [[ -n "$PYBOOT" ]] || die "need uv or python3 to build the virtualenv"
 
 # ------------------------------------------------------------------ venv ----
-if [[ -x "$VENV/bin/python" ]]; then
+if [[ -x "$VENV_PY" ]]; then
   say "Virtualenv already present at $VENV"
 else
   say "Creating virtualenv at $VENV"
   mkdir -p "$DATA"
   if command -v uv >/dev/null; then
     uv venv "$VENV" --python 3.12 >/dev/null || die "uv venv failed"
-    uv pip install --python "$VENV/bin/python" kokoro-onnx soundfile numpy >/dev/null \
+    uv pip install --python "$VENV_PY" kokoro-onnx soundfile numpy >/dev/null \
       || die "dependency install failed"
   else
     python3 -m venv "$VENV" || die "python3 -m venv failed (apt install python3-venv)"
-    "$VENV/bin/pip" install --quiet --upgrade pip >/dev/null
-    "$VENV/bin/pip" install --quiet kokoro-onnx soundfile numpy \
+    "$VENV_PY" -m pip install --quiet --upgrade pip >/dev/null
+    "$VENV_PY" -m pip install --quiet kokoro-onnx soundfile numpy \
       || die "dependency install failed"
   fi
 fi
@@ -144,7 +161,20 @@ LINK="$BINDIR/read-aloud"
 cs_record_root "$DATA/plugin-root" "$SCRIPTS" \
   || warn "could not record the plugin location in $DATA"
 
-if [[ ! -x "$BIN/read-aloud" ]]; then
+if [[ -n "$WINDOWS" ]]; then
+  WINBIN="$(cygpath -w "$BINDIR")"           # as Command Prompt spells it
+  cs_shim_sync "$BINDIR" "$DATA/plugin-root"
+  case $? in
+    0)     say "read-aloud.cmd already in $WINBIN" ;;
+    10|11) say "Put read-aloud.cmd in $WINBIN, for Command Prompt" ;;
+    12)    warn "$WINBIN\\read-aloud.cmd exists and is not ours — leaving it alone" ;;
+    *)     warn "could not write $WINBIN\\read-aloud.cmd — use /read-aloud:speak in Claude Code instead" ;;
+  esac
+  case ":$PATH:" in
+    *":$BINDIR:"*) ;;
+    *) warn "$WINBIN is not on your PATH — add it to use read-aloud in Command Prompt, or use /read-aloud:speak in Claude Code" ;;
+  esac
+elif [[ ! -x "$BIN/read-aloud" ]]; then
   warn "cannot find bin/read-aloud next to $SCRIPTS — skipping the PATH link"
 else
   cs_link_sync "$BINDIR" "$SCRIPTS"
@@ -169,7 +199,7 @@ fi
 if [[ "${1:-}" != "--no-service" ]] && command -v systemctl >/dev/null \
    && systemctl --user show-environment >/dev/null 2>&1; then
   UNIT="$HOME/.config/systemd/user/read-aloud.service"
-  cs_unit_write "$UNIT" "$VENV/bin/python" "$SCRIPTS" \
+  cs_unit_write "$UNIT" "$VENV_PY" "$SCRIPTS" \
     || die "could not write $UNIT"
   systemctl --user daemon-reload
   systemctl --user enable --now read-aloud.service >/dev/null 2>&1 \
@@ -184,19 +214,30 @@ say "Testing"
 python3 "$SCRIPTS/say.py" --voice "$(python3 "$SCRIPTS/csconfig.py" config get voice)" \
   "Read aloud is installed. This is the voice your replies will use when you play them."
 
-cat <<'DONE'
+# Windows gets no notification and no meeting guard yet (both need a Linux
+# desktop's tools, or a Mac's), so it is not promised either.
+if [[ -n "$WINDOWS" ]]; then
+  ANNOUNCED="a ding"
+  GUARD="The meeting guard cannot see the microphone on Windows yet, so with
+auto-speak on, a reply can be read out during a call."
+else
+  ANNOUNCED="a ding and a notification"
+  GUARD="Even with auto-speak on, nothing is spoken while your microphone is in
+use, so a call is never interrupted (read-aloud guard test)."
+fi
+
+cat <<DONE
 
 Done. Useful commands:
 
-Replies are HELD by default -- you get a ding and a notification, and
+Replies are HELD by default -- you get $ANNOUNCED, and
 hear them when you ask:
 
   read-aloud play         read this terminal's replies, oldest first
   read-aloud play all     read every project's
   read-aloud hold off     or have replies spoken automatically
 
-Even with auto-speak on, nothing is spoken while your microphone is in
-use, so a call is never interrupted (read-aloud guard test).
+$GUARD
 
   read-aloud audition     hear the 10 best English voices, then pick one
   read-aloud voice bm_george

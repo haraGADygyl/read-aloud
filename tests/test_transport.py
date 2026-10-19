@@ -59,7 +59,7 @@ class Base(unittest.TestCase):
             self.addCleanup(patcher.stop)
         self.speaker = FakeSpeaker()
 
-    def serve(self, connections=1):
+    def serve(self, connections=1, quit=None):
         """Start listening, answering this many connections in a thread."""
         server, where, token = kokorod.listen()
         self.addCleanup(server.close)
@@ -67,7 +67,7 @@ class Base(unittest.TestCase):
         def loop():
             for _ in range(connections):
                 conn, _ = server.accept()
-                kokorod.handle(conn, self.speaker, token)
+                kokorod.handle(conn, self.speaker, token, quit)
 
         thread = threading.Thread(target=loop, daemon=True)
         thread.start()
@@ -121,6 +121,24 @@ class Loopback(Base):
             conn.sendall(json.dumps({"cmd": "stop", "token": "é"}).encode()
                          + b"\n")
             self.assertEqual(conn.recv(4096), b"")
+
+    def test_quit_answers_then_leaves(self):
+        # `read-aloud restart` on Windows, where pkill cannot see the daemon.
+        # The reply has to go out first, or the client cannot tell it worked.
+        left = []
+        self.serve(quit=lambda: left.append("gone"))
+        self.assertEqual(say.send({"cmd": "quit"}, start_daemon=False), "ok")
+        self.assertEqual(left, ["gone"])
+
+    def test_quit_from_a_stranger_is_ignored(self):
+        left = []
+        where, _ = self.serve(quit=lambda: left.append("gone"))
+        with open(where) as fh:
+            port = int(fh.read().split()[0])
+        with socket.create_connection(("127.0.0.1", port), timeout=2) as conn:
+            conn.sendall(b'{"cmd": "quit"}\n')
+            conn.recv(4096)
+        self.assertEqual(left, [])
 
     def test_not_running_means_no_endpoint_file(self):
         self.assertIsNone(say.send({"cmd": "status"}, start_daemon=False))

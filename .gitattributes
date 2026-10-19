@@ -1,0 +1,10 @@
+# bash fails on a carriage return ($'\r': command not found), and a Windows
+# clone with core.autocrlf=true -- the Git for Windows default -- adds one to
+# every line. Claude Code installs the plugin with git, so this is what decides
+# whether read-aloud runs at all there.
+*.sh            text eol=lf
+bin/read-aloud  text eol=lf
+.githooks/*     text eol=lf
+
+# And cmd wants the opposite: a goto can miss a label in LF-only lines.
+*.cmd           text eol=crlf

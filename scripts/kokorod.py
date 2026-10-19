@@ -8,6 +8,7 @@ listen()) for newline-delimited JSON commands:
      "same": "queue"}
     {"cmd": "stop"}     cancel everything, drop the queue
     {"cmd": "status"}
+    {"cmd": "quit"}     stop, then exit — the next reply starts a fresh one
 
 Two axes decide what happens when a reply lands mid-speech:
 
@@ -238,7 +239,8 @@ class Speaker:
                 self._release(stream)
 
 
-def handle(conn, speaker, token=""):
+def handle(conn, speaker, token="", quit=None):
+    leaving = False
     with conn:
         conn.settimeout(5)
         data = b""
@@ -271,10 +273,17 @@ def handle(conn, speaker, token=""):
                 speaker.stop()
             elif cmd == "status":
                 reply = (json.dumps(speaker.status()) + "\n").encode()
+            elif cmd == "quit":
+                # `read-aloud restart` where there is neither systemd nor a
+                # pkill that can see native processes — Windows.
+                speaker.stop()
+                leaving = quit is not None
         try:
             conn.sendall(reply)
         except OSError:
             pass
+    if leaving:
+        quit()
 
 
 def listen():
@@ -316,10 +325,20 @@ def main():
     server, where, token = listen()
     print("read-aloud daemon ready on %s" % where, flush=True)
 
+    def quit():
+        # From a handler thread, so the finally below never runs: the main
+        # thread sits in accept(), which a signal does not interrupt on Windows.
+        try:
+            os.unlink(where)
+        except OSError:
+            pass
+        print("read-aloud daemon stopped on request", flush=True)
+        os._exit(0)
+
     try:
         while True:
             conn, _ = server.accept()
-            threading.Thread(target=handle, args=(conn, speaker, token),
+            threading.Thread(target=handle, args=(conn, speaker, token, quit),
                              daemon=True).start()
     finally:
         server.close()

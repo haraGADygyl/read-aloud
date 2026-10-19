@@ -22,7 +22,7 @@ No build, no linter, no CI. The tests need nothing installed and play no audio.
 
 **Most other commands make real noise on the user's machine.** `read-aloud test|read|play|voice|speed|audition|install` and `say.py` all synthesize and play, and `read-aloud sound <file>` plays the file you hand it. Prefer `scripts/cstext.py` or the tests when verifying changes. `read-aloud save` is the exception among the model-loading commands: it renders to an mp3 and plays nothing, so it is safe to run — it just takes real seconds per file. To exercise the socket path without audio, bind a stub listener at `$XDG_RUNTIME_DIR/read-aloud.sock` — AF_UNIX paths cap near 108 bytes, so a deep scratchpad directory will fail to bind; use a short `/tmp` path. Where Python has no `AF_UNIX` (Windows) the daemon listens on a loopback port instead and writes `<port> <token>` to `$DATA/daemon.port`; every message must carry that token, since a port, unlike a chmod-600 socket, answers anyone on the machine. `tests/test_transport.py` forces that path on every platform.
 
-On Windows, `core.autocrlf=true` checks the shell scripts out with CRLF and bash then fails on them, so run the suite under WSL from a fresh `git -c core.autocrlf=false clone`, not from the Windows working tree.
+On Windows, the shell tests drive `bash` with stubs and are skipped or fail there; run the whole suite under WSL from a fresh clone (`git clone` the Windows checkout into `/tmp`, apply `git diff`), where all of it passes. The Python-only suites (`test_cstext`, `test_queue`, `test_transport`, `test_csaudio`, `test_windows`) run natively.
 
 ## Two Python runtimes — the constraint that shapes everything
 
@@ -57,6 +57,17 @@ printf '{"session_id":"s","cwd":"/tmp/proj","last_assistant_message":"hi"}' \
 Set those two env vars for anything that writes state. Without them you scribble on the user's real config and their queue of held replies.
 
 They redirect `$DATA` and the config — **not `$HOME`**. `bin/read-aloud` repairs the PATH link and the systemd unit under `$HOME` from a pointer inside `$DATA`, so a scratch run with only these two set once re-pointed the live daemon at a git working tree and left it failing `203/EXEC`. `heal()` now returns early when either variable is set; redirect `HOME` and `XDG_RUNTIME_DIR` as well when driving the CLI in a test, or the socket you reach is the real daemon and it will speak.
+
+## Windows runs the same scripts under Git Bash
+
+Claude Code requires Git Bash on Windows and runs hooks and `!` commands through it, so `bin/read-aloud`, `install.sh` and `csheal.sh` are the same files everywhere, branching on `cs_windows` (which reads `uname`). What differs:
+
+- **Line endings.** `.gitattributes` forces LF on the shell files and CRLF on `.cmd`. Git for Windows defaults to `core.autocrlf=true`, Claude Code installs plugins with git, and bash dies on `$'\r'` — without it nothing runs. A clone made before the attributes existed keeps its CRLF files until they are checked out again
+- **Command Prompt.** `bin/read-aloud.cmd` finds Git Bash (`CLAUDE_CODE_GIT_BASH_PATH`, then beside `git`, then the usual installs — never plain `bash`, which is WSL's there) and runs `bin/read-aloud` under it. It switches the console to UTF-8 for the run, so it must stay ASCII itself. The installer writes a second `read-aloud.cmd` into `~/.local/bin` that reads `$DATA/plugin-root` at run time, so it never names a release and needs no healing — `cs_link_sync` is skipped on Windows
+- **UTF-8.** Python there uses the ANSI code page for pipes and files, which turned "—" into "â€”" in the queue. The hook runs as `python3 -X utf8`, `cspaths` sets `PYTHONUTF8=1` for every child on Windows, and the shell scripts export it
+- **No pkill, no systemd.** `read-aloud restart` sends `say.py --quit`, which the daemon answers and then exits
+- **`python3` may be the Microsoft Store stub**, which exits without running anything; `install.sh` refuses to continue on it, since the hook would fail silently forever
+- **Not ported:** the meeting guard (it says so rather than reporting "idle"), notifications, and a fallback voice before the model is installed
 
 ## State lives outside the plugin directory
 

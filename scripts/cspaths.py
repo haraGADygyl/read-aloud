@@ -12,6 +12,13 @@ import subprocess
 
 HOME = os.path.expanduser("~")
 
+# Python on Windows reads pipes and writes files in the ANSI code page: a reply
+# with an em dash in it arrived as "â€”" and was read out that way. The hook is
+# run with -X utf8 (hooks/hooks.json); this passes the same to every process
+# started from here — say.py, the daemon, the players.
+if os.name == "nt":
+    os.environ.setdefault("PYTHONUTF8", "1")
+
 _XDG_DATA = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share")
 _XDG_CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config")
 

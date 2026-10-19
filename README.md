@@ -31,6 +31,16 @@ finishes, `read-aloud …` and `/read-aloud:speak …` are interchangeable.
 That is the whole setup. No second restart — the Stop hook loaded with the
 plugin, and it starts using the neural voice on the next reply.
 
+On Windows the same steps work: Claude Code runs the plugin under Git Bash,
+which it needs there anyway. Instead of a link, the installer puts
+`read-aloud.cmd` in `%USERPROFILE%\.local\bin`, so the commands work from
+Command Prompt too — that folder is already on PATH if you use `uv`; otherwise
+add it. Outside Claude Code you can also run the installer directly:
+
+```
+%USERPROFILE%\.claude\plugins\cache\read-aloud\read-aloud\<version>\bin\read-aloud.cmd install
+```
+
 ### Coming from claude-speak
 
 This plugin was called **claude-speak** until 0.10.0. Claude Code now refuses
@@ -213,15 +223,17 @@ Everything else lives in the plugin's own virtualenv: `kokoro-onnx` brings
 there is no system `espeak-ng` to install. The CLI does its own JSON, so there
 is no `jq` either.
 
-| | Debian/Ubuntu | macOS |
-| --- | --- | --- |
-| Audio player | `paplay`, `pw-play`, `aplay`, `ffplay` or `sox` — a desktop install almost always has one | `afplay`, built in |
-| If none | the installer offers to `apt install pulseaudio-utils` | cannot happen |
-| Virtualenv | `uv`, or `python3-venv` | `python3` is enough |
-| Notifications | `notify-send` (`libnotify-bin`), optional | `osascript`, built in |
-| `save` to MP3 | `ffmpeg` or `lame` — `-o name.wav` needs neither | `ffmpeg` or `lame`, via Homebrew |
-| Meeting guard | works, via `pactl` | **unavailable** — no `pactl`, so the guard stays inert and hold mode is the protection |
-| Daemon | systemd user service, warm across reboots | starts on demand, stays up for the login session |
+| | Debian/Ubuntu | macOS | Windows |
+| --- | --- | --- | --- |
+| Audio player | `paplay`, `pw-play`, `aplay`, `ffplay` or `sox` — a desktop install almost always has one | `afplay`, built in | `winsound`, part of Python |
+| If none | the installer offers to `apt install pulseaudio-utils` | cannot happen | cannot happen |
+| Virtualenv | `uv`, or `python3-venv` | `python3` is enough | `uv`, or `python3` |
+| `python3` | always there | always there | must be a real one — the Python install manager provides it; the Microsoft Store alias does not run anything |
+| Shell | — | — | Git Bash, which Claude Code already requires |
+| Notifications | `notify-send` (`libnotify-bin`), optional | `osascript`, built in | none — the ding only |
+| `save` to MP3 | `ffmpeg` or `lame` — `-o name.wav` needs neither | `ffmpeg` or `lame`, via Homebrew | `ffmpeg` or `lame` on PATH |
+| Meeting guard | works, via `pactl` | **unavailable** — no `pactl`, so the guard stays inert and hold mode is the protection | **unavailable**, as on macOS |
+| Daemon | systemd user service, warm across reboots | starts on demand, stays up for the login session | starts on demand, stays up for the login session |
 
 The installer checks for a player before downloading anything, and offers to
 install one when it is run from a terminal. It never installs packages without
@@ -231,11 +243,13 @@ asking — on Linux that needs root, and a text-to-speech plugin reaching for
 On macOS, `afplay` plays files rather than a stream, so each sentence becomes a
 short temporary wav played to completion. Speech still starts after the first
 sentence; it just is not one continuous pipe. `ffmpeg` or `sox` switches it to
-the streaming path, but neither is needed.
+the streaming path, but neither is needed. Windows works the same way through
+`winsound`, and `ffplay` on PATH streams there too.
 
 Without the model installed, read-aloud falls back to `spd-say` / `espeak-ng`
 (Linux) or `say` (macOS). It works immediately; it just sounds robotic until you
-run `read-aloud install`.
+run `read-aloud install`. Windows has no such fallback yet: replies are held
+and dinged, but nothing is spoken until the model is installed.
 
 ---
 
@@ -318,6 +332,14 @@ systemctl --user disable --now read-aloud.service
 rm -rf ~/.local/share/read-aloud ~/.config/read-aloud
 rm -f ~/.config/systemd/user/read-aloud.service ~/.local/bin/read-aloud
 rm -f ~/.local/share/claude-speak ~/.config/claude-speak   # links left by the rename
+```
+
+On Windows, run `read-aloud restart` first to stop the daemon, then
+`/plugin uninstall read-aloud`, then from Command Prompt:
+
+```
+rmdir /s /q "%USERPROFILE%\.local\share\read-aloud" "%USERPROFILE%\.config\read-aloud"
+del "%USERPROFILE%\.local\bin\read-aloud.cmd"
 ```
 
 ---
