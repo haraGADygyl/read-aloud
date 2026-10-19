@@ -163,23 +163,41 @@ class Speaker:
             if self.player is proc:
                 self.player = None
 
-    def _play_file(self, pcm, rate, player):
-        """One chunk through a file-only player. Blocks until it has played."""
+    # A file-only player is started and left to play while the next chunk is
+    # synthesized, and only then waited for. Played start to finish before the
+    # next synthesis began, every sentence boundary was a silence as long as
+    # Kokoro took over the next sentence.
+
+    def _start_file(self, pcm, rate, player):
+        """Start one chunk playing; (process, wav) to finish it, or None."""
         path = csaudio.write_temp_wav(pcm, rate)
         try:
             proc = subprocess.Popen(player + [path], stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL,
                                     creationflags=cspaths.NO_WINDOW)
-            if not self._adopt(proc):
-                return False
+        except OSError:
+            self._unlink(path)
+            raise
+        if not self._adopt(proc):
             proc.wait()
-            self._release(proc)
-            return not self.cancel
-        finally:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+            self._unlink(path)
+            return None
+        return proc, path
+
+    def _finish_file(self, playing):
+        """Wait for a chunk from _start_file. False once speech is cancelled."""
+        proc, path = playing
+        proc.wait()
+        self._release(proc)
+        self._unlink(path)
+        return not self.cancel
+
+    @staticmethod
+    def _unlink(path):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
     def _speak(self, job):
         text = self._announce(job) + job.text
@@ -188,6 +206,7 @@ class Speaker:
         # one (afplay, winsound) takes a chunk at a time. Decided per reply, since
         # the rate is not known until the first chunk is synthesized.
         stream, file_player = None, csaudio.file_player()
+        playing = None                        # the file chunk still sounding
         try:
             def create(piece):
                 return self.kokoro.create(piece, voice=job.voice, speed=job.speed)
@@ -212,7 +231,13 @@ class Speaker:
                     if cmd is None:
                         if file_player is None:
                             raise RuntimeError(csaudio.NO_PLAYER)
-                        if not self._play_file(pcm, rate, file_player):
+                        # This chunk was synthesized while the last one played.
+                        if playing is not None:
+                            done, playing = self._finish_file(playing), None
+                            if not done:
+                                return
+                        playing = self._start_file(pcm, rate, file_player)
+                        if playing is None:
                             return
                         continue
 
@@ -229,6 +254,8 @@ class Speaker:
                     except (BrokenPipeError, ValueError, OSError):
                         return
         finally:
+            if playing is not None:
+                self._finish_file(playing)     # the last chunk plays out
             if stream is not None:
                 try:
                     stream.stdin.close()

@@ -12,6 +12,7 @@ import os
 import sys
 import types
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -127,6 +128,91 @@ class Cap(unittest.TestCase):
         for n in range(6):
             sp.submit(job("s1", same="queue", text=str(n)))
         self.assertEqual(len(sp.queue), 6)
+
+
+class Samples:
+    """Stands in for a numpy array on the one line that converts it."""
+
+    def __mul__(self, k):
+        return self
+
+    def astype(self, dtype):
+        return self
+
+    def tobytes(self):
+        return b"\x00\x00"
+
+
+class FileOverlap(unittest.TestCase):
+    """afplay and winsound play files, a chunk at a time. Each chunk used to
+    play to the end before the next was synthesized, so every boundary was a
+    silence as long as the synthesis. The next chunk is made while one plays."""
+
+    def setUp(self):
+        self.log = []
+        log = self.log
+
+        class Kokoro:
+            def create(self, text, voice, speed):
+                log.append("make " + text)
+                return Samples(), 24000
+
+        class Player:
+            def __init__(self, args, **kw):
+                self.n = sum(1 for e in log if e.startswith("play"))
+                log.append("play %d" % self.n)
+
+            def wait(self, timeout=None):
+                log.append("end %d" % self.n)
+                return 0
+
+            def poll(self):
+                return None
+
+            def kill(self):
+                log.append("kill %d" % self.n)
+
+        self.sp = Quiet()
+        self.sp.kokoro = Kokoro()
+        for target, name, value in [
+                (kokorod, "np", types.SimpleNamespace(clip=lambda s, lo, hi: s)),
+                (kokorod, "split_chunks", lambda text: ["a", "b", "c"]),
+                (kokorod.subprocess, "Popen", Player),
+                (kokorod.csaudio, "stream_cmd", lambda rate: None),
+                (kokorod.csaudio, "file_player", lambda: ["player"])]:
+            patcher = mock.patch.object(target, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_the_next_chunk_is_made_while_one_plays(self):
+        self.sp._speak(job("s1", text="ignored"))
+        self.assertEqual(self.log, [
+            "make a", "play 0",
+            "make b", "end 0", "play 1",       # b was made before a finished
+            "make c", "end 1", "play 2",
+            "end 2"])                           # and the last plays out
+
+    def test_one_player_at_a_time(self):
+        self.sp._speak(job("s1", text="ignored"))
+        sounding = 0
+        for event in self.log:
+            sounding += event.startswith("play") - event.startswith("end")
+            self.assertLessEqual(sounding, 1, self.log)
+
+    def test_a_stop_while_the_next_is_made_ends_it_there(self):
+        sp, log = self.sp, self.log
+        real = sp.kokoro.create
+
+        def create(text, voice, speed):
+            if text == "b":
+                sp.stop()                      # arrives while a is playing
+            return real(text, voice, speed)
+
+        sp.kokoro.create = create
+        sp._speak(job("s1", text="ignored"))
+        self.assertIn("kill 0", log)
+        self.assertNotIn("play 1", log)
+        self.assertEqual(log[-1], "end 0")     # nothing left sounding
 
 
 if __name__ == "__main__":
