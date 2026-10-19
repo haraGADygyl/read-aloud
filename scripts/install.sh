@@ -214,17 +214,9 @@ say "Testing"
 python3 "$SCRIPTS/say.py" --voice "$(python3 "$SCRIPTS/csconfig.py" config get voice)" \
   "Read aloud is installed. This is the voice your replies will use when you play them."
 
-# Windows gets no notification and no meeting guard yet (both need a Linux
-# desktop's tools, or a Mac's), so it is not promised either.
-if [[ -n "$WINDOWS" ]]; then
-  ANNOUNCED="a ding"
-  GUARD="The meeting guard cannot see the microphone on Windows yet, so with
-auto-speak on, a reply can be read out during a call."
-else
-  ANNOUNCED="a ding and a notification"
-  GUARD="Even with auto-speak on, nothing is spoken while your microphone is in
-use, so a call is never interrupted (read-aloud guard test)."
-fi
+# Windows gets no desktop notification yet, so it is not promised one.
+ANNOUNCED="a ding and a notification"
+[[ -n "$WINDOWS" ]] && ANNOUNCED="a ding"
 
 cat <<DONE
 
@@ -237,7 +229,8 @@ hear them when you ask:
   read-aloud play all     read every project's
   read-aloud hold off     or have replies spoken automatically
 
-$GUARD
+Even with auto-speak on, nothing is spoken while your microphone is in
+use, so a call is never interrupted (read-aloud guard test).
 
   read-aloud audition     hear the 10 best English voices, then pick one
   read-aloud voice bm_george

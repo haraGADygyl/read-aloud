@@ -28,7 +28,7 @@ On Windows, the shell tests drive `bash` with stubs and are skipped or fail ther
 
 | Runs under | Files | May import |
 | --- | --- | --- |
-| System `python3` | `speak-hook.py`, `say.py`, `cstext.py`, `cspaths.py`, `csconfig.py`, `csaudio.py`, `csmigrate.py` | **stdlib only** |
+| System `python3` | `speak-hook.py`, `say.py`, `cstext.py`, `cspaths.py`, `csconfig.py`, `csaudio.py`, `csmigrate.py`, `csmic.py` | **stdlib only** |
 | Venv `$DATA/venv/bin/python` (`venv\Scripts\python.exe` on Windows) | `kokorod.py`, `audition.py`, `csrender.py` | `numpy`, `kokoro_onnx` |
 
 The Stop hook runs under whatever `python3` Claude Code happens to have and cannot see the venv. A third-party import anywhere in the first row breaks speech for every user — silently, for the reason below.
@@ -67,7 +67,8 @@ Claude Code requires Git Bash on Windows and runs hooks and `!` commands through
 - **UTF-8.** Python there uses the ANSI code page for pipes and files, which turned "—" into "â€”" in the queue. The hook runs as `python3 -X utf8`, `cspaths` sets `PYTHONUTF8=1` for every child on Windows, and the shell scripts export it
 - **No pkill, no systemd.** `read-aloud restart` sends `say.py --quit`, which the daemon answers and then exits
 - **`python3` may be the Microsoft Store stub**, which exits without running anything; `install.sh` refuses to continue on it, since the hook would fail silently forever
-- **Not ported:** the meeting guard (it says so rather than reporting "idle"), notifications, and a fallback voice before the model is installed
+- **The meeting guard** reads `HKCU\…\CapabilityAccessManager\ConsentStore\microphone` (`scripts/csmic.py`) — the record behind the taskbar's microphone icon — instead of `pactl`. An app with a start time and no stop time is recording; one that started over 12 hours ago crashed rather than called. To test it live, `winmm`'s `mciSendStringW("open new type waveaudio alias cap")` then `"record cap"` from `ctypes` opens the microphone without saving anything; note that `bash` from Python on Windows is WSL's, so drive the CLI with Git Bash's `bash.exe` by path
+- **Not ported:** notifications, and a fallback voice before the model is installed
 
 ## State lives outside the plugin directory
 

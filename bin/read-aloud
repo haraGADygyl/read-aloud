@@ -295,14 +295,14 @@ case "${1:-status}" in
            echo "meeting guard: off — replies may be spoken during calls" ;;
       test|"")
         if [[ "$(get meetingGuard)" != "true" ]]; then echo "meeting guard: off"; exit 0; fi
-        # It asks PulseAudio/PipeWire, which Windows does not have. "idle"
-        # would be a promise it cannot keep.
+        # PulseAudio/PipeWire on Linux; on Windows, the record behind the
+        # taskbar's microphone icon — see scripts/csmic.py.
         if [[ -n "$WINDOWS" ]]; then
-          echo "meeting guard: on, but it cannot see the microphone on Windows yet — replies may be spoken during calls"
-          exit 0
+          apps=$(python3 "$SCRIPTS/csmic.py" 2>/dev/null)
+        else
+          apps=$(pactl list source-outputs 2>/dev/null \
+                 | grep -oP 'application\.name = "\K[^"]*' | sort -u | paste -sd', ')
         fi
-        apps=$(pactl list source-outputs 2>/dev/null \
-               | grep -oP 'application\.name = "\K[^"]*' | sort -u | paste -sd', ')
         if [[ -n "$apps" ]]; then
           echo "meeting guard: on — ACTIVE, microphone in use by: $apps"
         else

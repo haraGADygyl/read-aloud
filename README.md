@@ -232,7 +232,7 @@ is no `jq` either.
 | Shell | — | — | Git Bash, which Claude Code already requires |
 | Notifications | `notify-send` (`libnotify-bin`), optional | `osascript`, built in | none — the ding only |
 | `save` to MP3 | `ffmpeg` or `lame` — `-o name.wav` needs neither | `ffmpeg` or `lame`, via Homebrew | `ffmpeg` or `lame` on PATH |
-| Meeting guard | works, via `pactl` | **unavailable** — no `pactl`, so the guard stays inert and hold mode is the protection | **unavailable**, as on macOS |
+| Meeting guard | works, via `pactl` | **unavailable** — no `pactl`, so the guard stays inert and hold mode is the protection | works — it reads the same record that lights the taskbar's microphone icon |
 | Daemon | systemd user service, warm across reboots | starts on demand, stays up for the login session | starts on demand, stays up for the login session |
 
 The installer checks for a player before downloading anything, and offers to
@@ -318,7 +318,13 @@ works; the notification path depends on your desktop.
 **One voice at a time.** Speech is serialized by design. Two replies never
 overlap.
 
-**The meeting guard needs `pactl`.** It detects recording streams through
+**On Windows the meeting guard counts any app using the microphone** —
+including Claude Code's own `/voice` while you dictate, and an app that keeps
+the microphone open without being on a call. `read-aloud guard test` names
+them, and `meetingGuardIgnore` in the config takes a list of names to
+disregard. An app that crashed mid-call stops counting after 12 hours.
+
+**On Linux the meeting guard needs `pactl`.** It detects recording streams through
 PulseAudio/PipeWire. On a system using bare ALSA or JACK it can't see anything
 and stays inert — hold mode is the fallback there.
 

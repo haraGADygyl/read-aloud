@@ -17,6 +17,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import csaudio  # noqa: E402
+import csmic  # noqa: E402
 import cspaths  # noqa: E402
 import csmigrate  # noqa: E402
 from cstext import clean, load_config  # noqa: E402
@@ -148,9 +149,16 @@ def mic_in_use(cfg):
     """True when some app is recording — i.e. you are on a call.
 
     A PulseAudio/PipeWire 'source output' is a recording stream. Playback
-    streams are sink inputs, so this never trips on our own audio.
+    streams are sink inputs, so this never trips on our own audio. Windows
+    keeps its own record of who is recording — see csmic.py.
     """
-    if not cfg.get("meetingGuard", True) or not shutil.which("pactl"):
+    if not cfg.get("meetingGuard", True):
+        return False
+    if csmic.WINDOWS:
+        ignore = [str(s).lower() for s in cfg.get("meetingGuardIgnore") or []]
+        return any(not any(ig in n.lower() for ig in ignore)
+                   for n in csmic.windows_mic_users())
+    if not shutil.which("pactl"):
         return False
     try:
         out = subprocess.run(["pactl", "list", "source-outputs"],
