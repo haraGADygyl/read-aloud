@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Kokoro TTS daemon — keeps the model warm and streams speech as it renders.
 
-Listens on a unix socket for newline-delimited JSON commands:
+Listens on a unix socket (a token-guarded loopback port on Windows, see
+listen()) for newline-delimited JSON commands:
     {"cmd": "say", "text": "...", "voice": "af_heart", "speed": 1.0,
      "session": "<id>", "label": "myproject", "mode": "queue",
      "same": "queue"}
@@ -20,8 +21,10 @@ Nothing overlaps either way.
 """
 
 import collections
+import hmac
 import json
 import os
+import secrets
 import socket
 import subprocess
 import sys
@@ -233,7 +236,7 @@ class Speaker:
                 self._release(stream)
 
 
-def handle(conn, speaker):
+def handle(conn, speaker, token=""):
     with conn:
         conn.settimeout(5)
         data = b""
@@ -254,6 +257,9 @@ def handle(conn, speaker):
                 msg = json.loads(line)
             except ValueError:
                 continue
+            sent = str(msg.get("token", "")).encode()   # bytes: str must be ASCII
+            if token and not hmac.compare_digest(sent, token.encode()):
+                return      # not from this user: no reply, nothing said
             cmd = msg.get("cmd")
             if cmd == "say":
                 if (msg.get("text") or "").strip():
@@ -269,6 +275,35 @@ def handle(conn, speaker):
             pass
 
 
+def listen():
+    """A listening socket, where it is, and the token clients must send.
+
+    A unix socket where there is one. Otherwise (Windows) a loopback port the
+    OS picks, advertised with a fresh token in cspaths.ENDPOINT — see there.
+    """
+    if cspaths.UNIX_SOCKETS:
+        if os.path.exists(cspaths.SOCK):
+            os.unlink(cspaths.SOCK)
+        os.makedirs(os.path.dirname(cspaths.SOCK), exist_ok=True)
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(cspaths.SOCK)
+        os.chmod(cspaths.SOCK, 0o600)
+        server.listen(8)
+        return server, cspaths.SOCK, ""
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(("127.0.0.1", 0))
+    server.listen(8)
+    token = secrets.token_hex(16)
+    os.makedirs(os.path.dirname(cspaths.ENDPOINT), exist_ok=True)
+    # Written aside and renamed, so a client never reads half a line.
+    tmp = cspaths.ENDPOINT + ".tmp"
+    with open(tmp, "w") as fh:
+        fh.write("%d %s\n" % (server.getsockname()[1], token))
+    os.replace(tmp, cspaths.ENDPOINT)
+    return server, cspaths.ENDPOINT, token
+
+
 def main():
     from kokoro_onnx import Kokoro
 
@@ -276,23 +311,18 @@ def main():
     kokoro.create("ready", voice="af_heart", speed=1.0)   # warm the graph
     speaker = Speaker(kokoro)
 
-    if os.path.exists(cspaths.SOCK):
-        os.unlink(cspaths.SOCK)
-    os.makedirs(os.path.dirname(cspaths.SOCK), exist_ok=True)
-    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    server.bind(cspaths.SOCK)
-    os.chmod(cspaths.SOCK, 0o600)
-    server.listen(8)
-    print("read-aloud daemon ready on %s" % cspaths.SOCK, flush=True)
+    server, where, token = listen()
+    print("read-aloud daemon ready on %s" % where, flush=True)
 
     try:
         while True:
             conn, _ = server.accept()
-            threading.Thread(target=handle, args=(conn, speaker), daemon=True).start()
+            threading.Thread(target=handle, args=(conn, speaker, token),
+                             daemon=True).start()
     finally:
         server.close()
-        if os.path.exists(cspaths.SOCK):
-            os.unlink(cspaths.SOCK)
+        if os.path.exists(where):
+            os.unlink(where)
 
 
 if __name__ == "__main__":

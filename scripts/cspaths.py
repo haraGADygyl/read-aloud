@@ -7,6 +7,7 @@ replace that directory, and a 338 MB model download should survive them.
 import json
 import os
 import re
+import socket
 
 HOME = os.path.expanduser("~")
 
@@ -38,6 +39,14 @@ ROOT_POINTER = os.path.join(DATA, "plugin-root")
 # that do not set it (some containers, some BSD-ish setups).
 _RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or DATA
 SOCK = os.path.join(_RUNTIME, "read-aloud.sock")
+
+# Windows Python has no AF_UNIX, so there the daemon listens on a loopback port
+# the OS picks and writes "<port> <token>" here. A unix socket is chmod 600; a
+# loopback port answers anyone on the machine, so the token stands in for the
+# file permission — this file sits in the user's own profile, and a client
+# that cannot read it cannot be heard.
+UNIX_SOCKETS = hasattr(socket, "AF_UNIX")
+ENDPOINT = os.path.join(DATA, "daemon.port")
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 DAEMON = os.path.join(SCRIPTS, "kokorod.py")

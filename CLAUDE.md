@@ -20,7 +20,9 @@ read-aloud restart | log | queue         # daemon control
 
 No build, no linter, no CI. The tests need nothing installed and play no audio.
 
-**Most other commands make real noise on the user's machine.** `read-aloud test|read|play|voice|speed|audition|install` and `say.py` all synthesize and play, and `read-aloud sound <file>` plays the file you hand it. Prefer `scripts/cstext.py` or the tests when verifying changes. `read-aloud save` is the exception among the model-loading commands: it renders to an mp3 and plays nothing, so it is safe to run — it just takes real seconds per file. To exercise the socket path without audio, bind a stub listener at `$XDG_RUNTIME_DIR/read-aloud.sock` — AF_UNIX paths cap near 108 bytes, so a deep scratchpad directory will fail to bind; use a short `/tmp` path.
+**Most other commands make real noise on the user's machine.** `read-aloud test|read|play|voice|speed|audition|install` and `say.py` all synthesize and play, and `read-aloud sound <file>` plays the file you hand it. Prefer `scripts/cstext.py` or the tests when verifying changes. `read-aloud save` is the exception among the model-loading commands: it renders to an mp3 and plays nothing, so it is safe to run — it just takes real seconds per file. To exercise the socket path without audio, bind a stub listener at `$XDG_RUNTIME_DIR/read-aloud.sock` — AF_UNIX paths cap near 108 bytes, so a deep scratchpad directory will fail to bind; use a short `/tmp` path. Where Python has no `AF_UNIX` (Windows) the daemon listens on a loopback port instead and writes `<port> <token>` to `$DATA/daemon.port`; every message must carry that token, since a port, unlike a chmod-600 socket, answers anyone on the machine. `tests/test_transport.py` forces that path on every platform.
+
+On Windows, `core.autocrlf=true` checks the shell scripts out with CRLF and bash then fails on them, so run the suite under WSL from a fresh `git -c core.autocrlf=false clone`, not from the Windows working tree.
 
 ## Two Python runtimes — the constraint that shapes everything
 

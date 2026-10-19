@@ -22,15 +22,33 @@ import cspaths  # noqa: E402
 SERVICE = "read-aloud.service"
 
 
+def endpoint():
+    """Where the daemon listens, and the token it wants ("" on a unix socket)."""
+    if cspaths.UNIX_SOCKETS:
+        return socket.AF_UNIX, cspaths.SOCK, ""
+    try:
+        with open(cspaths.ENDPOINT) as fh:
+            port, token = fh.read().split()
+        return socket.AF_INET, ("127.0.0.1", int(port)), token
+    except ValueError:
+        raise OSError("unreadable endpoint file")   # half-written; retry later
+
+
 def connect(timeout=1.0):
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    """A (connection, token) pair. Raises OSError while nothing is listening."""
+    family, address, token = endpoint()
+    sock = socket.socket(family, socket.SOCK_STREAM)
     sock.settimeout(timeout)
-    sock.connect(cspaths.SOCK)
-    return sock
+    try:
+        sock.connect(address)
+    except BaseException:
+        sock.close()
+        raise
+    return sock, token
 
 
 def ensure_daemon(wait=60.0):
-    """Return a connection, starting the daemon if it isn't up yet."""
+    """Return (connection, token), starting the daemon if it isn't up yet."""
     try:
         return connect()
     except (OSError, socket.timeout):
@@ -76,6 +94,9 @@ def send(msg, start_daemon=True):
             return None
     if conn is None:
         return None
+    conn, token = conn
+    if token:
+        msg = dict(msg, token=token)
     with conn:
         try:
             conn.sendall((json.dumps(msg) + "\n").encode())

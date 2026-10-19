@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Tests for how say.py reaches the daemon — a unix socket, or a loopback port.
+
+    python3 -m unittest discover tests
+
+Windows Python has no AF_UNIX, so there the daemon listens on 127.0.0.1 behind
+a token. The loopback path is forced here on every platform, so a change that
+breaks Windows fails on Linux and macOS too. A fake speaker stands in for the
+model: nothing is synthesised and nothing plays.
+"""
+
+import json
+import os
+import shutil
+import socket
+import sys
+import tempfile
+import threading
+import types
+import unittest
+from unittest import mock
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+sys.modules.setdefault("numpy", types.ModuleType("numpy"))
+
+import cspaths  # noqa: E402
+import kokorod  # noqa: E402
+import say  # noqa: E402
+
+
+class FakeSpeaker:
+    def __init__(self):
+        self.said = []
+
+    def submit(self, job, mode="queue"):
+        self.said.append(job.text)
+        return "speaking"
+
+    def stop(self):
+        pass
+
+    def status(self):
+        return {"speaking": None, "queued": 0}
+
+
+class Base(unittest.TestCase):
+    unix = False
+
+    def setUp(self):
+        # Short and under /tmp where there is one: AF_UNIX paths cap near 108.
+        self.dir = tempfile.mkdtemp(dir="/tmp" if os.path.isdir("/tmp") else None)
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        for name, value in [("UNIX_SOCKETS", self.unix),
+                            ("ENDPOINT", os.path.join(self.dir, "daemon.port")),
+                            ("SOCK", os.path.join(self.dir, "s.sock"))]:
+            patcher = mock.patch.object(cspaths, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.speaker = FakeSpeaker()
+
+    def serve(self, connections=1):
+        """Start listening, answering this many connections in a thread."""
+        server, where, token = kokorod.listen()
+        self.addCleanup(server.close)
+
+        def loop():
+            for _ in range(connections):
+                conn, _ = server.accept()
+                kokorod.handle(conn, self.speaker, token)
+
+        thread = threading.Thread(target=loop, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join, 5)
+        return where, token
+
+
+class Loopback(Base):
+
+    def test_say_reaches_the_daemon(self):
+        self.serve()
+        self.assertEqual(say.send({"cmd": "say", "text": "hello"},
+                                  start_daemon=False), "speaking")
+        self.assertEqual(self.speaker.said, ["hello"])
+
+    def test_status_comes_back(self):
+        self.serve()
+        out = say.send({"cmd": "status"}, start_daemon=False)
+        self.assertEqual(json.loads(out), self.speaker.status())
+
+    def test_it_listens_on_loopback_only(self):
+        server, _, token = kokorod.listen()
+        self.addCleanup(server.close)
+        self.assertEqual(server.getsockname()[0], "127.0.0.1")
+        self.assertGreaterEqual(len(token), 32)
+
+    def test_a_wrong_token_is_not_heard(self):
+        self.serve()
+        with open(cspaths.ENDPOINT) as fh:
+            port = fh.read().split()[0]
+        with open(cspaths.ENDPOINT, "w") as fh:
+            fh.write("%s %s\n" % (port, "0" * 32))
+        self.assertFalse(say.send({"cmd": "say", "text": "intruder"},
+                                  start_daemon=False))
+        self.assertEqual(self.speaker.said, [])
+
+    def test_no_token_is_not_heard(self):
+        where, _ = self.serve()
+        with open(where) as fh:
+            port = int(fh.read().split()[0])
+        with socket.create_connection(("127.0.0.1", port), timeout=2) as conn:
+            conn.sendall(b'{"cmd": "say", "text": "intruder"}\n')
+            self.assertEqual(conn.recv(4096), b"")
+        self.assertEqual(self.speaker.said, [])
+
+    def test_a_non_ascii_token_is_refused_quietly(self):
+        where, _ = self.serve()
+        with open(where) as fh:
+            port = int(fh.read().split()[0])
+        with socket.create_connection(("127.0.0.1", port), timeout=2) as conn:
+            conn.sendall(json.dumps({"cmd": "stop", "token": "é"}).encode()
+                         + b"\n")
+            self.assertEqual(conn.recv(4096), b"")
+
+    def test_not_running_means_no_endpoint_file(self):
+        self.assertIsNone(say.send({"cmd": "status"}, start_daemon=False))
+
+    def test_a_half_written_endpoint_file_is_not_running(self):
+        with open(cspaths.ENDPOINT, "w") as fh:
+            fh.write("517")
+        self.assertIsNone(say.send({"cmd": "status"}, start_daemon=False))
+
+    def test_a_stale_port_is_not_running(self):
+        # The daemon died and nothing listens there now.
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        with open(cspaths.ENDPOINT, "w") as fh:
+            fh.write("%d %s\n" % (port, "a" * 32))
+        self.assertIsNone(say.send({"cmd": "status"}, start_daemon=False))
+
+
+@unittest.skipUnless(hasattr(socket, "AF_UNIX"), "no unix sockets here")
+class UnixSocket(Base):
+    unix = True
+
+    def test_say_reaches_the_daemon(self):
+        self.serve()
+        self.assertEqual(say.send({"cmd": "say", "text": "hello"},
+                                  start_daemon=False), "speaking")
+        self.assertEqual(self.speaker.said, ["hello"])
+
+    def test_no_token_and_no_endpoint_file(self):
+        where, token = self.serve()
+        self.assertEqual(token, "")
+        self.assertEqual(where, cspaths.SOCK)
+        self.assertFalse(os.path.exists(cspaths.ENDPOINT))
+        say.send({"cmd": "stop"}, start_daemon=False)
+
+
+if __name__ == "__main__":
+    unittest.main()

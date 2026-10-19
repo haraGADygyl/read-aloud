@@ -274,6 +274,7 @@ update never re-downloads 338 MB:
 | `~/.local/share/read-aloud/last/` | The most recent reply per project, and per session under `sessions/` (kept 30 days), for `again` |
 | `~/.local/share/read-aloud/plugin-root` | Which plugin directory is installed, so the PATH link and the daemon survive an update |
 | `$XDG_RUNTIME_DIR/read-aloud.sock` | Daemon socket |
+| `~/.local/share/read-aloud/daemon.port` | Daemon port and access token, used instead of the socket where Python has no unix sockets (Windows) |
 
 Override with `READ_ALOUD_HOME` and `READ_ALOUD_CONFIG`.
 
