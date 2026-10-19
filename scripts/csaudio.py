@@ -275,11 +275,12 @@ def audio_path(src, dest=None, ext=".mp3"):
     like, a directory means inside it; anything else is taken as the exact file
     to write, extension included — that is how `-o notes.wav` picks wav.
     """
-    stem = os.path.splitext(os.path.basename(src.rstrip("/") or "audio"))[0] or "audio"
+    seps = "/" + os.sep                      # "audio\" names a directory on Windows
+    stem = os.path.splitext(os.path.basename(src.rstrip(seps) or "audio"))[0] or "audio"
     if not dest:
         return stem + ext
-    if os.path.isdir(dest) or dest.endswith("/") or os.path.splitext(dest)[1] == "":
-        return os.path.join(dest, stem + ext)
+    if os.path.isdir(dest) or dest.endswith(tuple(seps)) or os.path.splitext(dest)[1] == "":
+        return os.path.join(dest.rstrip(seps) or dest, stem + ext)
     return dest
 
 

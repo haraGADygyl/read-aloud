@@ -20,6 +20,8 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import support  # noqa: E402
 MIGRATE = os.path.join(ROOT, "scripts", "csmigrate.py")
 HOOK = os.path.join(ROOT, "scripts", "speak-hook.py")
 HEAL = os.path.join(ROOT, "scripts", "csheal.sh")
@@ -90,6 +92,7 @@ class Directories(Home):
         self.assertIn("moved ~/.local/share/claude-speak to ~/.local/share/read-aloud",
                       out.stdout)
 
+    @support.needs_symlinks
     def test_a_link_is_left_where_they_were(self):
         """A terminal not yet restarted still runs the old hook, which writes
         its held replies to the old path."""
@@ -151,6 +154,7 @@ class OldPluginStillInstalled(Home):
         self.assertEqual((out.returncode, out.stdout), (0, ""))
 
 
+@support.needs_symlinks
 class TheHook(Home):
     """The first reply after the switch carries the state over — before the
     hook writes its pointer, which would otherwise start a fresh directory."""
@@ -170,6 +174,7 @@ class TheHook(Home):
             self.assertEqual(fh.read().strip(), os.path.join(ROOT, "scripts"))
 
 
+@support.posix_only
 class TheCLI(Home):
 
     def old_unit_and_link(self):
@@ -195,7 +200,7 @@ class TheCLI(Home):
         return units, bindir
 
     def cli(self, *args):
-        return subprocess.run([BIN] + list(args), capture_output=True, text=True,
+        return subprocess.run(support.script(BIN, *args), capture_output=True, text=True,
                               env=self.env, cwd=self.home)
 
     def test_everything_moves_in_one_run(self):
@@ -241,13 +246,14 @@ class TheCLI(Home):
         self.assertNotIn("enable", self.systemctl())
 
 
+@support.needs_symlinks
 class SomebodyElsesLink(unittest.TestCase):
 
     def test_a_claude_speak_link_that_is_not_ours_stays(self):
         d = tempfile.mkdtemp()
         os.symlink("/usr/bin/true", os.path.join(d, "claude-speak"))
-        out = subprocess.run(["bash", "-c", '. %s; cs_link_retire "%s"; echo "rc=$?"'
-                              % (HEAL, d)], capture_output=True, text=True)
+        out = subprocess.run([support.BASH, "-c", '. %s; cs_link_retire "%s"; echo "rc=$?"'
+                              % (support.sh_path(HEAL), d)], capture_output=True, text=True)
         self.assertIn("rc=12", out.stdout)
         self.assertTrue(os.path.islink(os.path.join(d, "claude-speak")))
 

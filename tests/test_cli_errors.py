@@ -18,10 +18,13 @@ every invocation, and the socket it reaches would be the real daemon.
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import support  # noqa: E402
 BIN = os.path.join(ROOT, "bin", "read-aloud")
 
 
@@ -34,7 +37,7 @@ class CLI(unittest.TestCase):
                    HOME=self.dir, XDG_RUNTIME_DIR=self.dir,
                    READ_ALOUD_HOME=self.dir,
                    READ_ALOUD_CONFIG=os.path.join(self.dir, "config.json"))
-        return subprocess.run([BIN] + list(args), capture_output=True,
+        return subprocess.run(support.script(BIN, *args), capture_output=True,
                               text=True, env=env, cwd=self.dir)
 
 

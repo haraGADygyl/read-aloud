@@ -90,8 +90,12 @@ def legacy_plugin(home=None):
 
 
 def tilde(path):
-    home = cspaths.HOME.rstrip("/") + "/"
-    return "~/" + path[len(home):] if path.startswith(home) else path
+    # os.sep, not "/": on Windows the paths are C:\Users\..., and the message
+    # printed every one in full.
+    home = cspaths.HOME.rstrip("/\\") + os.sep
+    if not path.startswith(home):
+        return path
+    return "~/" + path[len(home):].replace(os.sep, "/")
 
 
 def main():

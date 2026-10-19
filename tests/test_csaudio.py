@@ -269,6 +269,11 @@ class OutputNaming(unittest.TestCase):
         self.assertEqual(csaudio.audio_path("docs/plan.md", "audio/"),
                          os.path.join("audio", "plan.mp3"))
 
+    @unittest.skipUnless(os.sep == "\\", "a backslash is a separator on Windows only")
+    def test_a_windows_directory_is_filled(self):
+        self.assertEqual(csaudio.audio_path("docs\\plan.md", "audio\\"),
+                         os.path.join("audio", "plan.mp3"))
+
     def test_a_file_name_is_taken_literally(self):
         # Including the extension: that is how wav is asked for.
         self.assertEqual(csaudio.audio_path("docs/plan.md", "drive.wav"), "drive.wav")

@@ -21,6 +21,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HEAL = os.path.join(ROOT, "scripts", "csheal.sh")
 HOOK = os.path.join(ROOT, "scripts", "speak-hook.py")
 CMD = os.path.join(ROOT, "bin", "read-aloud.cmd")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import support  # noqa: E402
 
 QUIET_CFG = '{"notify": false, "meetingGuard": false, "holdSound": "off"}'
 
@@ -32,28 +34,43 @@ printf 'W:%s\\n' "$1" | tr / '\\\\'
 """
 
 
-@unittest.skipIf(os.name == "nt", "drives bash with stubs; run it under WSL")
-class GitBash(unittest.TestCase):
+class Stubbed(unittest.TestCase):
+    """Stand-ins on PATH for what the shell side asks: uname decides the
+    platform, so these run the Windows branches on Linux and the Linux ones
+    on Windows alike."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.stubs = os.path.join(self.dir, "stubs")
-        os.makedirs(self.stubs)
-        for name, body in [("uname", "#!/bin/sh\necho MINGW64_NT-10.0-26200\n"),
-                           ("cygpath", CYGPATH)]:
-            path = os.path.join(self.stubs, name)
-            with open(path, "w") as fh:
-                fh.write(body)
-            os.chmod(path, 0o755)
+        self.win = os.path.join(self.dir, "win")
+        self.posix = os.path.join(self.dir, "posix")
+        self.stub(self.win, "uname", "echo MINGW64_NT-10.0-26200\n")
+        self.stub(self.win, "cygpath", CYGPATH)
+        self.stub(self.posix, "uname", "echo Linux\n")
+
+    def stub(self, where, name, body):
+        os.makedirs(where, exist_ok=True)
+        path = os.path.join(where, name)
+        # "\n" whatever the platform: #!/bin/sh\r is not a shell.
+        with open(path, "w", newline="\n") as fh:
+            fh.write(body if body.startswith("#!") else "#!/bin/sh\n" + body)
+        os.chmod(path, 0o755)
+
+    # Put from inside bash: Git Bash puts its own /usr/bin ahead of whatever
+    # PATH it is handed, which would hide a stub uname behind the real one.
+    FIRST = 'PATH="$(cygpath -u "$STUBS" 2>/dev/null || printf %s "$STUBS"):$PATH"\n'
+
+    def env(self, windows):
+        return dict(os.environ, STUBS=self.win if windows else self.posix)
 
     def sh(self, snippet, windows=True):
-        path = os.environ["PATH"]
-        if windows:
-            path = self.stubs + os.pathsep + path
-        return subprocess.run(["bash", "-c", ". %s\n%s" % (HEAL, snippet)],
-                              capture_output=True, text=True, cwd=self.dir,
-                              env=dict(os.environ, PATH=path))
+        return subprocess.run(
+            [support.BASH, "-c",
+             self.FIRST + ". %s\n%s" % (support.sh_path(HEAL), snippet)],
+            capture_output=True, text=True, cwd=self.dir, env=self.env(windows))
+
+
+class GitBash(Stubbed):
 
     def test_it_knows_where_it_is(self):
         self.assertEqual(self.sh("cs_windows && echo yes").stdout, "yes\n")
@@ -105,11 +122,11 @@ class GitBash(unittest.TestCase):
 
     def test_somebody_elses_read_aloud_cmd_is_left_alone(self):
         os.makedirs(os.path.dirname(self.shim()))
-        with open(self.shim(), "w") as fh:
-            fh.write("@echo mine\r\n")
+        with open(self.shim(), "wb") as fh:
+            fh.write(b"@echo mine\r\n")
         self.assertEqual(self.sync(), "rc=12")
-        with open(self.shim()) as fh:
-            self.assertEqual(fh.read(), "@echo mine\n")
+        with open(self.shim(), "rb") as fh:
+            self.assertEqual(fh.read(), b"@echo mine\r\n")
 
 
 class CommandPrompt(unittest.TestCase):

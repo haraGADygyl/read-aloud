@@ -9,10 +9,13 @@ must let through matter as much as the ones it must stop.
 
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import support  # noqa: E402
 HOOK = os.path.join(ROOT, ".githooks", "commit-msg")
 
 ACCEPTED = {
@@ -56,7 +59,7 @@ class CommitMsgHook(unittest.TestCase):
         path = os.path.join(self.dir, "COMMIT_EDITMSG")
         with open(path, "w") as fh:
             fh.write(message)
-        return subprocess.run([HOOK, path], capture_output=True, text=True)
+        return subprocess.run(support.script(HOOK, path), capture_output=True, text=True)
 
     def test_hook_is_executable(self):
         self.assertTrue(os.access(HOOK, os.X_OK),

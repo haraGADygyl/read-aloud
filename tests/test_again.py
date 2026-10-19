@@ -22,6 +22,8 @@ import time
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import support  # noqa: E402
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 import cspaths  # noqa: E402
@@ -230,7 +232,7 @@ class FromTheSlashCommand(Base):
 
     def cli(self, *args):
         env = dict(self.env, HOME=self.dir, XDG_RUNTIME_DIR=self.dir)
-        return subprocess.run([self.BIN] + list(args), capture_output=True,
+        return subprocess.run(support.script(self.BIN, *args), capture_output=True,
                               text=True, env=env, cwd=self.dir)
 
     def test_again_asks_for_this_session_not_the_project(self):

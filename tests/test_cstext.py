@@ -16,6 +16,8 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import support  # noqa: E402
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 import cstext  # noqa: E402
@@ -342,7 +344,6 @@ class FilterCLI(unittest.TestCase):
         self.assertEqual(self.run_cli().returncode, 2)
 
 
-@unittest.skipUnless(os.path.exists("/bin/bash"), "needs bash")
 class ReadCommand(unittest.TestCase):
     """`read-aloud read` — only the paths that stop before speaking."""
 
@@ -353,8 +354,15 @@ class ReadCommand(unittest.TestCase):
                         READ_ALOUD_CONFIG=os.path.join(self.dir, "config.json"))
 
     def read(self, arg):
-        return subprocess.run(["/bin/bash", BIN, "read", arg],
-                              capture_output=True, text=True, env=self.env)
+        argv, env = support.script(BIN, "read", arg), self.env
+        if support.WINDOWS:
+            # Git Bash's runtime takes an argument starting with @ from a
+            # native program as a response file, and splices in its contents.
+            # Inside Claude Code bash calls bash, so only this harness meets it.
+            argv = [support.BASH, "-c", 'exec "$0" read "$READ_ARG"',
+                    support.sh_path(BIN)]
+            env = dict(env, READ_ARG=arg)
+        return subprocess.run(argv, capture_output=True, text=True, env=env)
 
     def test_missing_file(self):
         r = self.read(os.path.join(self.dir, "nope.md"))

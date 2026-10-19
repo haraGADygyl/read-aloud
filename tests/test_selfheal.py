@@ -23,6 +23,8 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import support  # noqa: E402
 HEAL = os.path.join(ROOT, "scripts", "csheal.sh")
 HOOK = os.path.join(ROOT, "scripts", "speak-hook.py")
 
@@ -40,7 +42,7 @@ class Shell(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
 
     def sh(self, snippet):
-        return subprocess.run(["bash", "-c", ". %s\n%s" % (HEAL, snippet)],
+        return subprocess.run([support.BASH, "-c", ". %s\n%s" % (support.sh_path(HEAL), snippet)],
                               capture_output=True, text=True, cwd=self.dir)
 
     def plugin_tree(self, version):
@@ -56,6 +58,7 @@ class Shell(unittest.TestCase):
         return root
 
 
+@support.posix_only
 class LinkSync(Shell):
 
     def link(self):
@@ -116,6 +119,7 @@ class LinkSync(Shell):
         self.assertFalse(os.path.islink(self.link()))
 
 
+@support.posix_only
 class UnitSync(Shell):
 
     def unit(self):
@@ -149,6 +153,7 @@ class UnitSync(Shell):
         self.assertIn("rc=1", out.stdout)
 
 
+@support.posix_only
 class UnitRestart(Shell):
     """Whether the daemon was restarted decides whether the CLI waits for it.
 
@@ -180,13 +185,13 @@ class UnitRestart(Shell):
 
     def sync(self, is_enabled):
         unit = os.path.join(self.dir, "read-aloud.service")
-        subprocess.run(["bash", "-c", '. %s\ncs_unit_write "%s" /venv/py /old/scripts'
-                        % (HEAL, unit)], check=True)
+        subprocess.run([support.BASH, "-c", '. %s\ncs_unit_write "%s" /venv/py /old/scripts'
+                        % (support.sh_path(HEAL), unit)], check=True)
         env = dict(os.environ, PATH=self.fake_systemctl(is_enabled) + os.pathsep
                    + os.environ["PATH"])
         return subprocess.run(
-            ["bash", "-c", '. %s\ncs_unit_sync "%s" /venv/py /new/scripts; echo "rc=$?"'
-             % (HEAL, unit)], capture_output=True, text=True, env=env)
+            [support.BASH, "-c", '. %s\ncs_unit_sync "%s" /venv/py /new/scripts; echo "rc=$?"'
+             % (support.sh_path(HEAL), unit)], capture_output=True, text=True, env=env)
 
     def test_restarted_when_the_service_is_enabled(self):
         self.assertIn("rc=13", self.sync(True).stdout)
@@ -197,6 +202,7 @@ class UnitRestart(Shell):
         self.assertNotIn("restart", self.calls())
 
 
+@support.needs_symlinks
 class RedirectedStateIsLeftAlone(unittest.TestCase):
     """READ_ALOUD_HOME redirects the state, never $HOME.
 
@@ -222,7 +228,7 @@ class RedirectedStateIsLeftAlone(unittest.TestCase):
         with open(os.path.join(data, "plugin-root"), "w") as fh:
             fh.write(os.path.join(ROOT, "scripts") + "\n")
 
-        subprocess.run(["bash", os.path.join(ROOT, "bin", "read-aloud"), "hold"],
+        subprocess.run(support.script(os.path.join(ROOT, "bin", "read-aloud"), "hold"),
                        capture_output=True, text=True,
                        env=dict(os.environ, HOME=home,
                                 READ_ALOUD_HOME=data,
@@ -308,7 +314,7 @@ class Pointer(unittest.TestCase):
     def test_the_shell_agrees_the_pointer_is_usable(self):
         self.run_hook()
         out = subprocess.run(
-            ["bash", "-c", '. %s\ncs_scripts_from_pointer "%s"' % (HEAL, self.pointer)],
+            [support.BASH, "-c", '. %s\ncs_scripts_from_pointer "%s"' % (support.sh_path(HEAL), self.pointer)],
             capture_output=True, text=True)
         self.assertEqual(out.stdout, os.path.join(ROOT, "scripts"))
 
@@ -316,8 +322,8 @@ class Pointer(unittest.TestCase):
         with open(self.pointer, "w") as fh:
             fh.write("/gone/0.6.2/scripts\n")
         out = subprocess.run(
-            ["bash", "-c", '. %s\ncs_scripts_from_pointer "%s"; echo "rc=$?"'
-             % (HEAL, self.pointer)], capture_output=True, text=True)
+            [support.BASH, "-c", '. %s\ncs_scripts_from_pointer "%s"; echo "rc=$?"'
+             % (support.sh_path(HEAL), self.pointer)], capture_output=True, text=True)
         self.assertIn("rc=1", out.stdout)
 
 
