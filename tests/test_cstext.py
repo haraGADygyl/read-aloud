@@ -136,6 +136,14 @@ class Clean(unittest.TestCase):
             with self.subTest(src=src):
                 self.assertEqual(cstext.clean(src, cfg()), want)
 
+    def test_windows_line_endings_read_like_unix_ones(self):
+        for src in ["Done.\n\n# Next\n\nBody", "Done.\n\n> quoted",
+                    "Done.\n\n- one\n- two", "a\n\n---\n\nb",
+                    "Results:\n\n| a | b |\n| - | - |\n"]:
+            with self.subTest(src=src):
+                self.assertEqual(cstext.clean(src.replace("\n", "\r\n"), cfg()),
+                                 cstext.clean(src, cfg()))
+
     def test_colon_before_a_list(self):
         self.assertEqual(cstext.clean("The plan:\n\n- ship it", cfg()),
                          "The plan: ship it")
@@ -304,6 +312,15 @@ class FilterCLI(unittest.TestCase):
         path = os.path.join(self.dir, "a.md")
         with open(path, "w") as fh:
             fh.write("# Title\n\nSee `src/a/b.py:7`.\n")
+        r = self.run_cli(path)
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout, "Title. See b.py line 7.")
+
+    def test_file_saved_on_windows(self):
+        # Bytes, so the test sees CRLF on every platform, not only on Windows.
+        path = os.path.join(self.dir, "a.md")
+        with open(path, "wb") as fh:
+            fh.write(b"# Title\r\n\r\nSee `src/a/b.py:7`.\r\n")
         r = self.run_cli(path)
         self.assertEqual(r.returncode, 0)
         self.assertEqual(r.stdout, "Title. See b.py line 7.")

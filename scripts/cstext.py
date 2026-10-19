@@ -98,7 +98,12 @@ def _shorten_path(m):
 
 
 def clean(text, cfg):
-    marker = " . Code block. " if cfg["announceCode"] else " "
+    # A file saved on Windows ends its lines in \r\n. Every line rule below
+    # anchors on $ after [ \t]*, which a stray \r defeats, and a blank line
+    # holding only \r stops reading as a paragraph break: "# Title\r\n\r\nSee"
+    # came out as "Title" and "See" with no full stop between them.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    marker =" . Code block. " if cfg["announceCode"] else " "
     text = re.sub(r"```.*?```", marker, text, flags=re.DOTALL)
     text = re.sub(r"```.*", marker, text, flags=re.DOTALL)      # unterminated fence
 
