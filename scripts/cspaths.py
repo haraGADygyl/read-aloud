@@ -10,7 +10,25 @@ import re
 import socket
 import subprocess
 
-HOME = os.path.expanduser("~")
+
+
+def _home():
+    """The home directory, agreeing with the shell scripts' $HOME.
+
+    On Windows Python goes by USERPROFILE and ignores HOME, while
+    bin/read-aloud and install.sh go by $HOME — so anyone with HOME pointed
+    elsewhere had the hook queueing replies in one directory and `play`
+    looking in another. Git Bash hands HOME on as C:\\..., and only a value
+    with a drive is trusted: a /c/... one from some other tool would land in
+    C:\\c\\....
+    """
+    home = os.environ.get("HOME", "")
+    if os.name == "nt" and os.path.splitdrive(home)[0]:
+        return home
+    return os.path.expanduser("~")
+
+
+HOME = _home()
 
 # Python on Windows reads pipes and writes files in the ANSI code page: a reply
 # with an em dash in it arrived as "â€”" and was read out that way. The hook is

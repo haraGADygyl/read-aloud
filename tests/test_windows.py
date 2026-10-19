@@ -180,6 +180,31 @@ class Utf8(unittest.TestCase):
             self.assertEqual(json.loads(fh.readline())["text"], "Café — ok.")
 
     @unittest.skipUnless(os.name == "nt", "Windows only")
+    def test_home_follows_home_like_the_shell_does(self):
+        # Python on Windows reads USERPROFILE; the shell scripts read $HOME.
+        # Disagreeing split the queue in two — and let a test that redirects
+        # HOME write into the real profile.
+        home = os.path.join(self.dir, "elsewhere")
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, sys.argv[1]); import cspaths; "
+             "print(cspaths.DATA)", os.path.join(ROOT, "scripts")],
+            capture_output=True, text=True,
+            env=dict(os.environ, HOME=home, READ_ALOUD_HOME="",
+                     CLAUDE_SPEAK_HOME="", XDG_DATA_HOME=""))
+        self.assertEqual(out.stdout.strip(),
+                         os.path.join(home, ".local", "share", "read-aloud"))
+
+    @unittest.skipUnless(os.name == "nt", "Windows only")
+    def test_a_posix_home_is_not_trusted(self):
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, sys.argv[1]); import cspaths; "
+             "print(cspaths.HOME)", os.path.join(ROOT, "scripts")],
+            capture_output=True, text=True, env=dict(os.environ, HOME="/c/Users/x"))
+        self.assertEqual(out.stdout.strip(), os.path.expanduser("~"))
+
+    @unittest.skipUnless(os.name == "nt", "Windows only")
     def test_everything_started_from_the_scripts_inherits_it(self):
         out = subprocess.run(
             [sys.executable, "-c",
