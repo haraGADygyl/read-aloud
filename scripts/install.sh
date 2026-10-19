@@ -18,6 +18,9 @@ RELEASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-fil
 
 WINDOWS=""; cs_windows && WINDOWS=1
 VENV_PY="$(cs_venv_py "$VENV")"
+# python3, or on Windows whichever of python3, python and py really runs;
+# empty when none does, which the prerequisites check below reports.
+PY="$(cs_python)" || PY=""
 # Python on Windows reads and writes in the ANSI code page, which has no → or
 # —. UTF-8 mode for everything started from here.
 [[ -n "$WINDOWS" ]] && export PYTHONUTF8=1
@@ -31,7 +34,7 @@ die()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 # replies over — nobody should download 338 MB again for a rename — and swap
 # its daemon unit and PATH link for read-aloud's. Before anything below
 # creates $DATA, which would leave the old directory nowhere to move to.
-python3 "$SCRIPTS/csmigrate.py"
+[[ -n "$PY" ]] && "$PY" "$SCRIPTS/csmigrate.py"
 if ! cs_redirected; then
   cs_unit_migrate "$HOME/.config/systemd/user/claude-speak.service" \
     "$HOME/.config/systemd/user/read-aloud.service" "$VENV_PY" "$SCRIPTS"
@@ -96,18 +99,12 @@ fi
 command -v notify-send >/dev/null || [[ -n "$MACOS$WINDOWS" ]] \
   || warn "notify-send not found — hold-mode notifications will be silent (sudo apt install libnotify-bin)"
 
-# The Stop hook is run as python3. On Windows that name can be the Microsoft
-# Store's stand-in, which prints an advert and exits — and the hook swallows
-# every failure, so replies would go silently unread. Better to say so now.
-if [[ -n "$WINDOWS" ]] && ! python3 -c 'import sys' >/dev/null 2>&1; then
-  die "python3 does not run here, and Claude Code runs the read-aloud hook as python3.
-       Install Python from python.org with the Python install manager (it provides
-       python3), or turn off the python3 alias under Settings > Apps > Advanced app
-       settings > App execution aliases once a real one is on PATH."
-fi
+[[ -n "$PY" ]] || die "no working Python. On Windows, python3, python and py were
+       all tried — the Microsoft Store's python3 alias runs nothing. Install
+       Python from python.org."
 
 PYBOOT=""
-for c in uv python3; do command -v "$c" >/dev/null && { PYBOOT="$c"; break; }; done
+for c in uv "$PY"; do command -v "$c" >/dev/null && { PYBOOT="$c"; break; }; done
 [[ -n "$PYBOOT" ]] || die "need uv or python3 to build the virtualenv"
 
 # ------------------------------------------------------------------ venv ----
@@ -121,7 +118,7 @@ else
     uv pip install --python "$VENV_PY" kokoro-onnx soundfile numpy >/dev/null \
       || die "dependency install failed"
   else
-    python3 -m venv "$VENV" || die "python3 -m venv failed (apt install python3-venv)"
+    "$PY" -m venv "$VENV" || die "$PY -m venv failed (apt install python3-venv)"
     "$VENV_PY" -m pip install --quiet --upgrade pip >/dev/null
     "$VENV_PY" -m pip install --quiet kokoro-onnx soundfile numpy \
       || die "dependency install failed"
@@ -148,7 +145,7 @@ fetch "$RELEASE/voices-v1.0.bin"  "$MODELS/voices-v1.0.bin"  "27 MB"
 # One place defines the defaults — cstext.DEFAULTS — and csconfig.py writes
 # them out, carrying over a hand-rolled ~/.claude/speak.json if one exists.
 had_cfg=""; [[ -f "$CFG" ]] && had_cfg=1
-python3 "$SCRIPTS/csconfig.py" config ensure \
+"$PY" "$SCRIPTS/csconfig.py" config ensure \
   && say "$([[ -n "$had_cfg" ]] && echo "Config topped up at $CFG" || echo "Wrote config to $CFG")" \
   || warn "could not write $CFG"
 
@@ -211,7 +208,7 @@ fi
 
 # ------------------------------------------------------------------ done ----
 say "Testing"
-python3 "$SCRIPTS/say.py" --voice "$(python3 "$SCRIPTS/csconfig.py" config get voice)" \
+"$PY" "$SCRIPTS/say.py" --voice "$("$PY" "$SCRIPTS/csconfig.py" config get voice)" \
   "Read aloud is installed. This is the voice your replies will use when you play them."
 
 # Windows gets no desktop notification yet, so it is not promised one.

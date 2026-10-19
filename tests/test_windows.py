@@ -11,6 +11,7 @@ plays a sound, starts the daemon, or writes outside a temporary directory.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HEAL = os.path.join(ROOT, "scripts", "csheal.sh")
 HOOK = os.path.join(ROOT, "scripts", "speak-hook.py")
 CMD = os.path.join(ROOT, "bin", "read-aloud.cmd")
+LAUNCHER = os.path.join(ROOT, "scripts", "speak-hook.sh")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import support  # noqa: E402
 
@@ -129,6 +131,88 @@ class GitBash(Stubbed):
             self.assertEqual(fh.read(), b"@echo mine\r\n")
 
 
+class PythonByAnyName(Stubbed):
+    """The python.org installer gives Windows python and py, not python3, and
+    python3 there can be the Microsoft Store's stand-in, which runs nothing.
+    A hook that only knew python3 dropped every reply without a word."""
+
+    def setUp(self):
+        Stubbed.setUp(self)
+        self.log = os.path.join(self.dir, "ran.log")
+        # The Store's stand-in: an advert and a failure, whatever it is asked.
+        self.store = 'echo "Python was not found" >&2\nexit 9009\n'
+
+    def works(self, name):
+        """A python that passes the probe and records the real run."""
+        return ('[ "$1" = -c ] && exit 0\n'
+                'echo "%s $*" >> "%s"\ncat >> "%s"\n'
+                % (name, support.sh_path(self.log), support.sh_path(self.log)))
+
+    def give(self, windows, **pythons):
+        where = self.win if windows else self.posix
+        for name in ("python3", "python", "py"):
+            self.stub(where, name, pythons.get(name, self.store))
+
+    def launch(self, windows):
+        return subprocess.run(
+            [support.BASH, "-c", self.FIRST + 'exec sh "$0"', support.sh_path(LAUNCHER)],
+            input=b'{"payload": 1}', capture_output=True, env=self.env(windows))
+
+    def ran(self):
+        try:
+            with open(self.log) as fh:
+                return fh.read()
+        except OSError:
+            return ""
+
+    def test_python_is_used_when_python3_is_the_store_stub(self):
+        self.give(True, python=self.works("python"))
+        self.assertEqual(self.launch(True).returncode, 0)
+        self.assertRegex(self.ran(), r"^python -X utf8 \S*speak-hook\.py\n")
+
+    def test_the_payload_reaches_the_hook_not_the_probe(self):
+        self.give(True, python=self.works("python"))
+        self.launch(True)
+        self.assertTrue(self.ran().endswith('{"payload": 1}'), self.ran())
+
+    def test_py_is_the_last_resort(self):
+        self.give(True, py=self.works("py"))
+        self.launch(True)
+        self.assertTrue(self.ran().startswith("py -X utf8 "), self.ran())
+
+    def test_python3_first_when_it_works(self):
+        self.give(True, python3=self.works("python3"), python=self.works("python"))
+        self.launch(True)
+        self.assertTrue(self.ran().startswith("python3 "), self.ran())
+
+    def test_no_python_is_as_quiet_as_a_failing_hook(self):
+        self.give(True)
+        out = self.launch(True)
+        self.assertEqual((out.returncode, self.ran()), (0, ""))
+
+    def test_linux_and_macos_just_run_python3(self):
+        # No probe there: python3 is the name, and a probe would cost every
+        # reply a second interpreter start.
+        self.give(False, python3=self.works("python3"))
+        self.launch(False)
+        self.assertEqual(self.ran().splitlines()[0].split()[:3],
+                         ["python3", "-X", "utf8"])
+
+    def test_the_cli_picks_the_same_one(self):
+        self.give(True, python=self.works("python"))
+        self.assertEqual(self.sh("cs_python").stdout, "python")
+        self.give(True)
+        self.assertEqual(self.sh('cs_python; echo " rc=$?"').stdout, " rc=1\n")
+
+    def test_the_two_lists_agree(self):
+        lists = []
+        for path in (LAUNCHER, HEAL):
+            with open(path, encoding="utf-8") as fh:
+                lists += re.findall(r"for py in ([^;]+); do", fh.read())
+        self.assertEqual(len(lists), 2)
+        self.assertEqual(lists[0], lists[1])
+
+
 class CommandPrompt(unittest.TestCase):
 
     def test_the_cmd_entry_point_is_ascii(self):
@@ -184,7 +268,10 @@ class Utf8(unittest.TestCase):
     def test_the_hook_is_run_in_utf8_mode(self):
         with open(os.path.join(ROOT, "hooks", "hooks.json")) as fh:
             cmd = json.load(fh)["hooks"]["Stop"][0]["hooks"][0]["command"]
-        self.assertTrue(cmd.startswith("python3 -X utf8 "), cmd)
+        self.assertEqual(cmd, 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/speak-hook.sh"')
+        with open(LAUNCHER, encoding="utf-8") as fh:
+            runs = [l.strip() for l in fh if l.strip().startswith("exec ")]
+        self.assertTrue(runs and all("-X utf8" in l for l in runs), runs)
 
     def test_a_reply_keeps_its_accents_and_dashes(self):
         payload = {"session_id": "s", "cwd": os.path.join(self.dir, "proj"),

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -X utf8 \"${CLAUDE_PLUGIN_ROOT}/scripts/speak-hook.py\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/speak-hook.sh\"",
             "timeout": 10
           }
         ]

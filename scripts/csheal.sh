@@ -38,6 +38,24 @@ cs_windows() {
   return 1
 }
 
+# The interpreter for the stdlib-only scripts. python3, except on Windows,
+# where the python.org installer gives python and py but no python3, and
+# python3 can be the Microsoft Store's stand-in that runs nothing — so each
+# is tried for real. scripts/speak-hook.sh does the same for the hook; keep
+# the two lists alike. Fails when nothing runs.
+cs_python() {
+  cs_windows || { printf 'python3'; return 0; }
+  local py
+  for py in python3 python py; do
+    if "$py" -c 'import sys; sys.exit(sys.version_info[0] != 3)' \
+         </dev/null >/dev/null 2>&1; then
+      printf '%s' "$py"
+      return 0
+    fi
+  done
+  return 1
+}
+
 cs_venv_py() {                       # <venv dir> -> its python on stdout
   if cs_windows; then printf '%s/Scripts/python.exe' "$1"
   else printf '%s/bin/python' "$1"; fi

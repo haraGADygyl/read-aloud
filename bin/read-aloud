@@ -51,12 +51,6 @@ SCRIPTS="$(cd "$HERE/../scripts" && pwd)" || {
 DATA="${READ_ALOUD_HOME:-${CLAUDE_SPEAK_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/read-aloud}}"
 CFG="${READ_ALOUD_CONFIG:-${CLAUDE_SPEAK_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/read-aloud/config.json}}"
 HELD="$DATA/held.jsonl"
-SAY=(python3 "$SCRIPTS/say.py")
-
-# All JSON goes through csconfig.py rather than jq. python3 is required by the
-# rest of the plugin anyway, so this is one less system package to install —
-# and it leaves cstext.DEFAULTS as the only place the defaults are written.
-CS=(python3 "$SCRIPTS/csconfig.py")
 
 # shellcheck source=../scripts/csheal.sh
 . "$SCRIPTS/csheal.sh"
@@ -67,6 +61,16 @@ VENV_PY="$(cs_venv_py "$DATA/venv")"
 # Python on Windows reads and writes in the ANSI code page, which has no → or
 # — and turns a reply passed through a pipe into mojibake. UTF-8 mode instead.
 WINDOWS=""; cs_windows && WINDOWS=1 && export PYTHONUTF8=1
+
+# python3, or on Windows whichever of python3, python and py really runs.
+PY="$(cs_python)" || {
+  echo "read-aloud: no working Python — install it from python.org"; exit 1; }
+SAY=("$PY" "$SCRIPTS/say.py")
+
+# All JSON goes through csconfig.py rather than jq. Python is required by the
+# rest of the plugin anyway, so this is one less system package to install —
+# and it leaves cstext.DEFAULTS as the only place the defaults are written.
+CS=("$PY" "$SCRIPTS/csconfig.py")
 
 wait_for_daemon() {
   for _ in {1..10}; do
@@ -118,7 +122,7 @@ heal() {
 # so this release stands in until heal() puts it right.
 migrate() {
   local scripts rc
-  python3 "$SCRIPTS/csmigrate.py"
+  "$PY" "$SCRIPTS/csmigrate.py"
   cs_redirected && return 0
 
   scripts="$(cs_scripts_from_pointer "$POINTER")" || scripts="$SCRIPTS"
@@ -298,7 +302,7 @@ case "${1:-status}" in
         # PulseAudio/PipeWire on Linux; on Windows, the record behind the
         # taskbar's microphone icon — see scripts/csmic.py.
         if [[ -n "$WINDOWS" ]]; then
-          apps=$(python3 "$SCRIPTS/csmic.py" 2>/dev/null)
+          apps=$("$PY" "$SCRIPTS/csmic.py" 2>/dev/null)
         else
           apps=$(pactl list source-outputs 2>/dev/null \
                  | grep -oP 'application\.name = "\K[^"]*' | sort -u | paste -sd', ')
@@ -323,7 +327,7 @@ case "${1:-status}" in
         set_key holdSound "\"$2\""; echo "hold sound: $2"
         if [[ -n "$WINDOWS" ]]; then
           [[ "${2,,}" == *.wav ]] || echo "note: Windows can only play .wav files here"
-          python3 -c 'import sys, winsound; winsound.PlaySound(sys.argv[1], winsound.SND_FILENAME | winsound.SND_NODEFAULT)' \
+          "$PY" -c 'import sys, winsound; winsound.PlaySound(sys.argv[1], winsound.SND_FILENAME | winsound.SND_NODEFAULT)' \
             "$2" 2>/dev/null
         else
           paplay "$2" 2>/dev/null || aplay -q "$2" 2>/dev/null
@@ -413,7 +417,7 @@ print('\n'.join(sorted(Kokoro(cspaths.MODEL, cspaths.VOICES).get_voices())))" "$
     fi
     # Same markdown stripping the Stop hook uses, so a README sounds like prose
     # rather than punctuation. Refuses binary rather than reading it aloud.
-    text=$(python3 "$SCRIPTS/cstext.py" "$f") || exit 1
+    text=$("$PY" "$SCRIPTS/cstext.py" "$f") || exit 1
     [[ -n "${text//[[:space:]]/}" ]] || { echo "nothing to read in $f"; exit 0; }
 
     speed=$(get speed)

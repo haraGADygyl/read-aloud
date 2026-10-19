@@ -37,6 +37,7 @@ The Stop hook runs under whatever `python3` Claude Code happens to have and cann
 
 ```
 Stop hook (hooks/hooks.json)
+  → speak-hook.sh    picks a Python: python3, or on Windows python3|python|py
   → speak-hook.py    payload on stdin → cstext.clean() → hold or speak
   → say.py           unix-socket client, returns in ~30 ms
   → kokorod.py       warm model, sentence-chunked synthesis, streams PCM
@@ -66,7 +67,7 @@ Claude Code requires Git Bash on Windows and runs hooks and `!` commands through
 - **Command Prompt.** `bin/read-aloud.cmd` finds Git Bash (`CLAUDE_CODE_GIT_BASH_PATH`, then beside `git`, then the usual installs — never plain `bash`, which is WSL's there) and runs `bin/read-aloud` under it. It switches the console to UTF-8 for the run, so it must stay ASCII itself. The installer writes a second `read-aloud.cmd` into `~/.local/bin` that reads `$DATA/plugin-root` at run time, so it never names a release and needs no healing — `cs_link_sync` is skipped on Windows
 - **UTF-8.** Python there uses the ANSI code page for pipes and files, which turned "—" into "â€”" in the queue. The hook runs as `python3 -X utf8`, `cspaths` sets `PYTHONUTF8=1` for every child on Windows, and the shell scripts export it
 - **No pkill, no systemd.** `read-aloud restart` sends `say.py --quit`, which the daemon answers and then exits
-- **`python3` may be the Microsoft Store stub**, which exits without running anything; `install.sh` refuses to continue on it, since the hook would fail silently forever
+- **`python3` may not be there.** The python.org installer gives `python` and `py`, and `python3` can be the Microsoft Store's stand-in, which exits without running anything. `scripts/speak-hook.sh` (the hook) and `cs_python` (the CLI and installer) try `python3`, `python`, `py` for real and take the first that runs; the two lists are kept alike by a test. Claude Code runs hook commands with Git Bash on Windows and `sh -c` elsewhere, which is why the launcher is POSIX sh. Linux and macOS skip the probe and run `python3`
 - **The meeting guard** reads `HKCU\…\CapabilityAccessManager\ConsentStore\microphone` (`scripts/csmic.py`) — the record behind the taskbar's microphone icon — instead of `pactl`. An app with a start time and no stop time is recording; one that started over 12 hours ago crashed rather than called. To test it live, `winmm`'s `mciSendStringW("open new type waveaudio alias cap")` then `"record cap"` from `ctypes` opens the microphone without saving anything; note that `bash` from Python on Windows is WSL's, so drive the CLI with Git Bash's `bash.exe` by path
 - **Not ported:** notifications, and a fallback voice before the model is installed
 

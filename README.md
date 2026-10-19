@@ -228,7 +228,7 @@ is no `jq` either.
 | Audio player | `paplay`, `pw-play`, `aplay`, `ffplay` or `sox` — a desktop install almost always has one | `afplay`, built in | `winsound`, part of Python |
 | If none | the installer offers to `apt install pulseaudio-utils` | cannot happen | cannot happen |
 | Virtualenv | `uv`, or `python3-venv` | `python3` is enough | `uv`, or `python3` |
-| `python3` | always there | always there | must be a real one — the Python install manager provides it; the Microsoft Store alias does not run anything |
+| `python3` | always there | always there | `python3`, `python` or `py` — whichever really runs; the Microsoft Store's alias, which runs nothing, is passed over |
 | Shell | — | — | Git Bash, which Claude Code already requires |
 | Notifications | `notify-send` (`libnotify-bin`), optional | `osascript`, built in | none — the ding only |
 | `save` to MP3 | `ffmpeg` or `lame` — `-o name.wav` needs neither | `ffmpeg` or `lame`, via Homebrew | `ffmpeg` or `lame` on PATH |
