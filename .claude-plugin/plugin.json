@@ -1,7 +1,7 @@
 {
   "name": "read-aloud",
   "description": "Reads Claude Code's replies aloud with a local neural voice (Kokoro). No cloud, no API key. Session-aware across multiple terminals.",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "author": {
     "name": "Tihomir Manushev",
     "url": "https://github.com/haraGADygyl"

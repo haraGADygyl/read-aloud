@@ -20,7 +20,7 @@ WINDOWS=""; cs_windows && WINDOWS=1
 VENV_PY="$(cs_venv_py "$VENV")"
 # python3, or on Windows whichever of python3, python and py really runs;
 # empty when none does, which the prerequisites check below reports.
-PY="$(cs_python)" || PY=""
+PY="$(cs_python "$DATA")" || PY=""
 # Python on Windows reads and writes in the ANSI code page, which has no → or
 # —. UTF-8 mode for everything started from here.
 [[ -n "$WINDOWS" ]] && export PYTHONUTF8=1

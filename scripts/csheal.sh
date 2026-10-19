@@ -41,14 +41,23 @@ cs_windows() {
 # The interpreter for the stdlib-only scripts. python3, except on Windows,
 # where the python.org installer gives python and py but no python3, and
 # python3 can be the Microsoft Store's stand-in that runs nothing — so each
-# is tried for real. scripts/speak-hook.sh does the same for the hook; keep
+# is tried for real, and the real python.exe behind the first that runs is
+# remembered in $DATA/python: python3 there is often an alias that costs
+# ~0.3 s a start, and a command starts Python four or five times.
+# scripts/speak-hook.sh does the same for the hook and shares the file; keep
 # the two lists alike. Fails when nothing runs.
-cs_python() {
+cs_python() {                        # <data dir> -> interpreter on stdout
   cs_windows || { printf 'python3'; return 0; }
-  local py
-  for py in python3 python py; do
-    if "$py" -c 'import sys; sys.exit(sys.version_info[0] != 3)' \
-         </dev/null >/dev/null 2>&1; then
+  local data="$1" name py
+  py="$(cat "$data/python" 2>/dev/null)"
+  [[ -n "$py" && -f "$py" ]] && { printf '%s' "$py"; return 0; }
+  for name in python3 python py; do
+    py="$("$name" -c 'import sys; sys.version_info[0] == 3 and print(sys.executable)' \
+            </dev/null 2>/dev/null | tr -d '\r')"
+    if [[ -n "$py" && -f "$py" ]]; then
+      # Never creating $DATA: csmigrate.py needs it absent to move into.
+      [[ -d "$data" ]] && printf '%s\n' "$py" > "$data/python.tmp" \
+        && mv -f "$data/python.tmp" "$data/python"
       printf '%s' "$py"
       return 0
     fi

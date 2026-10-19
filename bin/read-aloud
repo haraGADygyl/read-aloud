@@ -63,7 +63,7 @@ VENV_PY="$(cs_venv_py "$DATA/venv")"
 WINDOWS=""; cs_windows && WINDOWS=1 && export PYTHONUTF8=1
 
 # python3, or on Windows whichever of python3, python and py really runs.
-PY="$(cs_python)" || {
+PY="$(cs_python "$DATA")" || {
   echo "read-aloud: no working Python — install it from python.org"; exit 1; }
 SAY=("$PY" "$SCRIPTS/say.py")
 

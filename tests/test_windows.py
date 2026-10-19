@@ -139,24 +139,38 @@ class PythonByAnyName(Stubbed):
     def setUp(self):
         Stubbed.setUp(self)
         self.log = os.path.join(self.dir, "ran.log")
+        self.probes = os.path.join(self.dir, "probes.log")
+        self.data = os.path.join(self.dir, "data")
+        os.makedirs(self.data)
+        self.cache = os.path.join(self.data, "python")
         # The Store's stand-in: an advert and a failure, whatever it is asked.
         self.store = 'echo "Python was not found" >&2\nexit 9009\n'
 
     def works(self, name):
-        """A python that passes the probe and records the real run."""
-        return ('[ "$1" = -c ] && exit 0\n'
+        """A python that answers the probe with its own path, as sys.executable
+        does, and records the real run."""
+        log, probes = support.sh_path(self.log), support.sh_path(self.probes)
+        return ('[ "$1" = -c ] && { echo %s >> "%s"; echo "$0"; exit 0; }\n'
                 'echo "%s $*" >> "%s"\ncat >> "%s"\n'
-                % (name, support.sh_path(self.log), support.sh_path(self.log)))
+                % (name, probes, name, log, log))
 
     def give(self, windows, **pythons):
         where = self.win if windows else self.posix
         for name in ("python3", "python", "py"):
             self.stub(where, name, pythons.get(name, self.store))
 
-    def launch(self, windows):
+    def launch(self, windows, data=None):
+        env = dict(self.env(windows), READ_ALOUD_HOME=data or self.data)
         return subprocess.run(
             [support.BASH, "-c", self.FIRST + 'exec sh "$0"', support.sh_path(LAUNCHER)],
-            input=b'{"payload": 1}', capture_output=True, env=self.env(windows))
+            input=b'{"payload": 1}', capture_output=True, env=env)
+
+    def probed(self):
+        try:
+            with open(self.probes) as fh:
+                return fh.read().split()
+        except OSError:
+            return []
 
     def ran(self):
         try:
@@ -198,17 +212,57 @@ class PythonByAnyName(Stubbed):
         self.assertEqual(self.ran().splitlines()[0].split()[:3],
                          ["python3", "-X", "utf8"])
 
+    def cs_python(self):
+        return self.sh('cs_python "%s"; echo " rc=$?"' % self.data).stdout
+
     def test_the_cli_picks_the_same_one(self):
         self.give(True, python=self.works("python"))
-        self.assertEqual(self.sh("cs_python").stdout, "python")
+        self.assertRegex(self.cs_python(), r"/python rc=0\n$")
+        os.remove(self.cache)
         self.give(True)
-        self.assertEqual(self.sh('cs_python; echo " rc=$?"').stdout, " rc=1\n")
+        self.assertEqual(self.cs_python(), " rc=1\n")
+
+    # python3 on Windows is often an alias that takes ~0.3 s to hand over to
+    # the real python.exe; the hook and every CLI command paid it repeatedly.
+
+    def test_the_interpreter_is_remembered(self):
+        self.give(True, python=self.works("python"))
+        self.launch(True)
+        self.launch(True)
+        self.assertEqual(self.probed(), ["python"])          # the first run only
+        with open(self.cache) as fh:
+            self.assertRegex(fh.read(), r"/python\n$")
+        self.assertEqual(self.ran().count("python -X utf8 "), 2)
+
+    def test_a_vanished_interpreter_is_looked_up_again(self):
+        with open(self.cache, "w", newline="\n") as fh:
+            fh.write(os.path.join(self.dir, "uninstalled", "python.exe") + "\n")
+        self.give(True, python=self.works("python"))
+        self.launch(True)
+        self.assertEqual(self.probed(), ["python"])
+        with open(self.cache) as fh:
+            self.assertNotIn("uninstalled", fh.read())
+
+    def test_the_hook_and_the_cli_share_it(self):
+        self.give(True, python=self.works("python"))
+        self.launch(True)
+        self.assertRegex(self.cs_python(), r"/python rc=0\n$")
+        self.assertEqual(self.probed(), ["python"])
+
+    def test_no_data_directory_is_created_for_it(self):
+        # csmigrate.py moves the claude-speak directory into place only if
+        # nothing is there yet, so the cache waits for the hook to make it.
+        fresh = os.path.join(self.dir, "fresh")
+        self.give(True, python=self.works("python"))
+        self.launch(True, data=fresh)
+        self.assertFalse(os.path.exists(fresh))
+        self.assertTrue(self.ran().startswith("python -X utf8 "), self.ran())
 
     def test_the_two_lists_agree(self):
         lists = []
         for path in (LAUNCHER, HEAL):
             with open(path, encoding="utf-8") as fh:
-                lists += re.findall(r"for py in ([^;]+); do", fh.read())
+                lists += re.findall(r"for name in ([^;]+); do", fh.read())
         self.assertEqual(len(lists), 2)
         self.assertEqual(lists[0], lists[1])
 
